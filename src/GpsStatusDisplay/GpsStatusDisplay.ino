@@ -45,6 +45,8 @@ void showDisplay()
       drawPage2();
    else if(currentDisplay == 2)
       drawPage3();
+   else if(currentDisplay == 3)
+      drawPage4();
   display.display();
 }
 void writepair(const String lefttext, const String righttext, const int row)
@@ -64,6 +66,7 @@ void writepair(const String lefttext, const float righttext, const int decimals,
 }
 void drawPage1()
 { 
+  display.setFont(ArialMT_Plain_10);
   writepair("Mode", mode, 0);
   writepair("Sats",String(sats), 1);
   if(latitude == NAN)
@@ -84,6 +87,7 @@ void drawPage1()
 }
 void drawPage2()
 { 
+  display.setFont(ArialMT_Plain_10);
   writepair("Mode", mode, 0);
   writepair("Horizontal Error", horizontalError, 3, 1);
   writepair("Vertical Error", verticalError, 3, 2);
@@ -94,6 +98,22 @@ void drawPage2()
 void drawPage3()
 { 
   display.drawCircle(64, 32, 31);
+  // TODO: Draw satellite plot
+  display.setPixel(60,12);
+  display.setPixel(80,42);
+  display.setPixel(85,22);
+  display.setPixel(85,42);
+  display.setPixel(40,30);
+  display.setPixel(45,58);
+}
+
+void drawPage4()
+{ 
+  display.setFont(ArialMT_Plain_16);
+  display.setTextAlignment(TEXT_ALIGN_CENTER);
+  display.drawString(64, 4, String(latitude, 2) + "*****" + latIndicator);
+  display.drawString(64, 24, String(longitude, 2) + "*****" + lonIndicator);
+  display.drawString(64, 44, String(elevation, 3) + "m");
 }
 void handleRMC(void)
 {
@@ -238,7 +258,6 @@ void setup()
     // Initialising the UI will init the display too.
   display.init();  
   display.flipScreenVertically();
-  display.setFont(ArialMT_Plain_10);
   display.clear();
   
   Wire.begin();   
@@ -262,7 +281,7 @@ void loop()
   int count;
   
   auto t = millis();
-  int index = (t / 5000) % 3;
+  int index = (t / 5000) % 4;
   if(currentDisplay != index)
   {
     currentDisplay = index;
