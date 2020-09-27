@@ -49,10 +49,18 @@ void writepair(const String lefttext, const String righttext, const int row)
 
 void writepair(const String lefttext, const float righttext, const int decimals, const int row)
 {
-  if(righttext == NAN)
+  if(std::isnan(righttext))
     writepair(lefttext, "---", row);
   else
     writepair(lefttext, String(righttext, decimals), row);
+}
+
+void writepair(const String lefttext, const float righttext, const String unit, const int decimals, const int row)
+{
+  if(std::isnan(righttext))
+    writepair(lefttext, "---", row);
+  else
+    writepair(lefttext, String(righttext, decimals) + unit, row);
 }
 
 void drawPage1()
@@ -60,16 +68,16 @@ void drawPage1()
   display.setFont(ArialMT_Plain_10);
   writepair("Mode", mode(), 0);
   writepair("Sats",String(sats()), 1);
-  if(latitude() == NAN)
+  if(std::isnan(latitude()))
     writepair("Lat","---", 2);
   else
     writepair("Lat",String(latitude(), 2) + "*****" + latIndicator(), 2);
-  if(longitude() == NAN)
+  if(std::isnan(longitude()))
     writepair("Lon","---", 3);
   else
     writepair("Lon",String(longitude(), 2) + "*****" + lonIndicator(), 3);
 
-  if(elevation() == NAN)
+  if(std::isnan(elevation()))
     writepair("MSL","---", 4);
   else
     writepair("MSL",String(elevation(), 3) + "m", 4);
@@ -81,8 +89,8 @@ void drawPage2()
 { 
   display.setFont(ArialMT_Plain_10);
   writepair("Mode", mode(), 0);
-  writepair("Horizontal Error", horizontalError(), 3, 1);
-  writepair("Vertical Error", verticalError(), 3, 2);
+  writepair("Horizontal Error", horizontalError(), "m", 3, 1);
+  writepair("Vertical Error", verticalError(), "m", 3, 2);
   writepair("HDOP ", hdop(), 3);
   writepair("VDOP ", vdop(), 4);
   writepair("PDOP ", pdop(), 5);
@@ -90,23 +98,66 @@ void drawPage2()
 
 void drawPage3()
 { 
-  display.drawCircle(64, 32, 31);
-  // TODO: Draw satellite plot
-  display.setPixel(60,12);
-  display.setPixel(80,42);
-  display.setPixel(85,22);
-  display.setPixel(85,42);
-  display.setPixel(40,30);
-  display.setPixel(45,58);
+  int cx = 31;
+  int cy = 31;
+  display.drawCircle(cx, cy, 16);
+  int dx = 20;
+  int dy = 19;
+  display.drawLine(dx + 11, dy + 0,   dx + 17, dy + 11);
+  display.drawLine(dx + 17, dy + 11,  dx + 14, dy + 11);
+  display.drawLine(dx + 14, dy + 11,  dx + 14, dy + 23);
+  display.drawLine(dx + 14, dy + 11,  dx + 14, dy + 23);
+  display.drawLine(dx + 14, dy + 23,  dx + 8,  dy + 23);
+  display.drawLine(dx + 8,  dy + 23,  dx + 8,  dy + 11);
+  display.drawLine(dx + 8,  dy + 11,  dx + 5,  dy + 11);
+  display.drawLine(dx + 5,  dy + 11,  dx + 11, dy + 0);
+  float c = course() / 180.0 * M_PI;
+  float sn = sin(c);
+  float cn = cos(c);
+  display.setFont(ArialMT_Plain_10);
+  display.setTextAlignment(TEXT_ALIGN_CENTER);
+  display.drawLine(sn * 14 + cx, cn * 14 + cy, sn * 19 + cx, cn * 19 + cy);
+  display.drawString(sn * 25 + cx, cn * 25 + cy - 5, "S");
+
+  sn = sin(c + M_PI/2);
+  cn = cos(c + M_PI/2);  
+  display.drawLine(sn * 14 + cx, cn * 14 + cy, sn * 19 + cx, cn * 19 + cy);
+  display.drawString(sn * 25 + cx, cn * 25 + cy - 5, "E");
+
+  sn = sin(c + M_PI*2/2);
+  cn = cos(c + M_PI*2/2);  
+  display.drawLine(sn * 14 + cx, cn * 14 + cy, sn * 19 + cx, cn * 19 + cy);
+  display.drawString(sn * 25 + cx, cn * 25 + cy - 5, "N");
+  
+  sn = sin(c + M_PI*3/2);
+  cn = cos(c + M_PI*3/2);
+  display.drawLine(sn * 14 + cx, cn * 14 + cy, sn * 19 + cx, cn * 19 + cy);
+  display.drawString(sn * 25 + cx, cn * 25 + cy - 5, "W");
+
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.drawString(64, 0, "Speed");
+  display.drawString(64, 32, "Course");
+  display.setFont(ArialMT_Plain_16);
+  display.drawString(64, 13, String(speed(),1) + "kn");
+  display.drawString(64, 45, String(course(),0) + "°");
 }
 
 void drawPage4()
 { 
   display.setFont(ArialMT_Plain_16);
   display.setTextAlignment(TEXT_ALIGN_CENTER);
-  display.drawString(64, 4, String(latitude(), 2) + "*****" + latIndicator());
-  display.drawString(64, 24, String(longitude(), 2) + "*****" + lonIndicator());
-  display.drawString(64, 44, String(elevation(), 3) + "m");
+  auto lat = String(latitude(), 2) + "*****" + latIndicator();
+  auto lon = String(longitude(), 2) + "*****" + lonIndicator();
+  auto z = String(elevation(), 3) + "m";
+  if(std::isnan(latitude()))
+    lat = "---";
+  if(std::isnan(longitude()))
+    lon = "---";
+  if(std::isnan(elevation()))
+    z = "---";
+  display.drawString(64, 4, lat);
+  display.drawString(64, 24, lon);
+  display.drawString(64, 44, z);
 }
 
 void onLocation(const char *type)
@@ -120,7 +171,8 @@ void onLocation(const char *type)
       digitalWrite(LED_BUILTIN, LOW);   // turn the LED on (HIGH is the voltage level)
     ledstate = !ledstate;
   }
-  else {
+  if (type == "GSA") // GSA is the last message in the bursts
+  {
     showDisplay();
   }
 }

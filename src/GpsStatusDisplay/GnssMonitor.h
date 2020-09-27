@@ -5,22 +5,24 @@
 #include "NMEAParser.h"
 
 typedef void (*LocationHandler)(const char *type);
-NMEAParser<5> mParser; 
+NMEAParser<6> mParser; 
 static LocationHandler mLocationHandler;
 // State variables
-float mLatitude;
-String mLatIndicator;
-float mLongitude;
-String mLonIndicator;
-float mElevation;
-String mMode;
-float mVerticalError;
-float mHorizontalError;
-String mHdop;
-String mVdop;
-String mPdop;
-int mSats;
-String mGpstime;
+float mSpeed = 0;
+float mCourse = 0;
+float mLatitude = NAN;
+String mLatIndicator = "";
+float mLongitude = NAN;
+String mLonIndicator = "";
+float mElevation = NAN;
+String mMode = "---";
+float mVerticalError = NAN;
+float mHorizontalError = NAN;
+String mHdop = "---";
+String mVdop = "---";
+String mPdop = "---";
+int mSats = 0;
+String mGpstime = "---";
 
 void raiseLocationEvent(const char *type)
 {
@@ -31,6 +33,20 @@ void raiseLocationEvent(const char *type)
 };
 void handleRMCMessage(void)
 {
+  String speedStr;
+  if (mParser.getArg(6, speedStr) && speedStr.length() > 0)
+  {
+    mSpeed = speedStr.toFloat();
+  }
+  else 
+  {
+    mSpeed = 0;
+  }
+  String courseStr;
+  if (mParser.getArg(7, courseStr) && courseStr.length() > 0)
+  {
+    mCourse = courseStr.toFloat();
+  }
   raiseLocationEvent("RMC");
 };
 void handleGGAMessage(void)
@@ -152,6 +168,19 @@ void handleGSVMessage(void)
   //mParser.getType(buf);  
 };
 
+void handleVTGMessage(void)
+{/*
+  if (!mParser.getArg(0, mCourse) && !mParser.getArg(1, mCourse))
+  {
+    mCourse = -999;
+  }
+  if (!mParser.getArg(2, mSpeed))
+  {
+    mSpeed = -1;
+  }
+  raiseLocationEvent("VTG");*/
+};
+
 void unknownCommandMessage()
 {
   //char buf[6];
@@ -175,6 +204,7 @@ void errorHandlerMessage()
      mParser.addHandler("GNGST", handleGSTMessage);
      mParser.addHandler("GNGSA", handleGSAMessage);
      mParser.addHandler("--GSV", handleGSVMessage);
+     mParser.addHandler("GNVTG", handleVTGMessage);
      mParser.setDefaultHandler(unknownCommandMessage);
   };
   
@@ -197,6 +227,8 @@ void readData()
   }
 };
 
+  float speed() { return mSpeed; }
+  float course() { return mCourse; }
   float latitude() { return mLatitude; }
   String latIndicator() { return mLatIndicator; }
   float longitude() { return mLongitude; }
