@@ -11,18 +11,20 @@ static LocationHandler mLocationHandler;
 float mSpeed = 0;
 float mCourse = 0;
 float mLatitude = NAN;
-String mLatIndicator = "";
+char mLatIndicator = 'N';
 float mLongitude = NAN;
-String mLonIndicator = "";
+char mLonIndicator = 'E';
 float mElevation = NAN;
 String mMode = "---";
 float mVerticalError = NAN;
 float mHorizontalError = NAN;
-String mHdop = "---";
-String mVdop = "---";
-String mPdop = "---";
+float mHdop = NAN;
+float mVdop = NAN;
+float mPdop = NAN;
 int mSats = 0;
+int mQuality = 0;
 String mGpstime = "---";
+int mSatsBySystem [5] = { 0, 0, 0, 0, 0 }; 
 
 void raiseLocationEvent(const char *type)
 {
@@ -101,10 +103,9 @@ void handleGGAMessage(void)
      mMode = "Estimated";
   else
      mMode = "---";
-
+  mQuality = quality;
   int satCount = 0;
   mParser.getArg(6, satCount);
-  //writepair("Satellites", String(satCount), 1, display);
   mSats = satCount;
   String time;
   if(mParser.getArg(0, time))
@@ -118,17 +119,31 @@ void handleGSAMessage(void)
 {
   int count = mParser.argCount();
   int systemId;
-  if(mParser.getArg(count-1, systemId) && systemId == 1)
+  if(mParser.getArg(count-1, systemId))
   {
-    if(count > 4 && mParser.getArg(count - 4, mPdop) && mParser.getArg(count - 3, mHdop) && mPdop.length() > 0 && mHdop.length() > 0
-    && mParser.getArg(count - 2, mVdop)) 
+    if(systemId > 0 && systemId<5)
     {
-    }
-    else 
-    {
-       mPdop = "---";
-       mHdop = "---";
-       mVdop = "---";
+      int satCount = 0;
+      for(int i=2;i<count-4;i++)
+      {
+        String satId;
+        if(mParser.getArg(i, satId) && satId.length() > 0)
+          satCount++;
+      }
+      mSatsBySystem[systemId-1] = satCount;
+      // Get DOP values from GPS system (the values should be the same for all systems, so just limiting to pulling it from GPS)
+      if(systemId == 1) 
+      {
+        if(count > 4 && mParser.getArg(count - 4, mPdop) && mParser.getArg(count - 3, mHdop) && mParser.getArg(count - 2, mVdop)) 
+        {
+        }
+        else 
+        {
+           mPdop = NAN;
+           mHdop = NAN;
+           mVdop = NAN;
+        }
+      }
     }
   }
   raiseLocationEvent("GSA");
@@ -230,16 +245,17 @@ void readData()
   float speed() { return mSpeed; }
   float course() { return mCourse; }
   float latitude() { return mLatitude; }
-  String latIndicator() { return mLatIndicator; }
+  char latIndicator() { return mLatIndicator; }
   float longitude() { return mLongitude; }
-  String lonIndicator() { return mLonIndicator; }
+  char lonIndicator() { return mLonIndicator; }
   float elevation() { return mElevation; }
   String mode() { return mMode; }
   float verticalError() { return mVerticalError; }
   float horizontalError() { return mHorizontalError; }
-  String hdop() { return mHdop; }
-  String vdop() { return mVdop; }
-  String pdop() { return mPdop; }
-  int sats() { return mSats; }
+  float hdop() { return mHdop; }
+  float vdop() { return mVdop; }
+  float pdop() { return mPdop; }
+  int sats() { return mSatsBySystem[0] + mSatsBySystem[1] + mSatsBySystem[2] + mSatsBySystem[3] + mSatsBySystem[4]; }
+  int quality() { return mQuality; }
   String gpstime() { return mGpstime; }
 #endif
