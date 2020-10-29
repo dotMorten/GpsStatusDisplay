@@ -1,228 +1,257 @@
 /*
   09/16/2020
   Author: Morten Nielsen
-  Platforms: ESP8266
+  Platforms: SAMD51
   Language: C++
-  File: GpsStart.ino
+  File: GpsStatusDisplay.ino
 
-  3rd libs used:
-  ThingPulse / esp8266-oled-ssd1306: https://github.com/ThingPulse/esp8266-oled-ssd1306/commit/c1fa10ea5e3700cfde1d032fa20b468bc43c997c
-  NmeaParser (modified): https://github.com/Glinnes/NMEAParser/commit/fa99f9ce0c08459e7afbf8dd8ad1caf1589ae0c8
-
+  3rd party libs used:
+  ucglib : https://github.com/olikraus/ucglib   http://librarymanager/All#Ucglib
+  SparkFun u-blox lib: https://github.com/sparkfun/SparkFun_Ublox_Arduino_Library   http://librarymanager/All#SparkFun_Ublox_GPS
 */
+
 #include <Wire.h>
-#include "SSD1306Wire.h"
-#include "NMEAParser.h"
+#include <Ucglib.h> //http://librarymanager/All#Ucglib
+
+// Initialize the OLED display:
+Ucglib_SSD1351_18x128x128_FT_HWSPI ucg(/*cd=*/ 1, /*cs=*/ 0, /*reset=*/ 4);
+
+//#include <SparkFun_Ublox_Arduino_Library.h> //http://librarymanager/All#SparkFun_Ublox_GPS
+#include "SparkFun_Ublox_Arduino_Library.h"
 #include "GnssMonitor.h"
+#include "drawhelpers.h"
+#include "Menu.h"
+#include "buttons.h"
+#include "bitmaps.h"
+#include "statuspages.h"
+#include "settingsMenu.h"
+
 bool ledstate;
 bool isDisplayOff;
+SFE_UBLOX_GPS gps;
+Menu *currentMenu = nullptr;
+bool isInitializing = true;
+bool gpsConnectionError = false;
 
-// Initialize the OLED display using Arduino Wire:
-SSD1306Wire display(0x3c, SDA, SCL);
-int16_t currentDisplay = 0;
-int16_t fontHeight = 10;
+int16_t currentDisplay = 2;
 
-void showDisplay()
+void showDisplay(bool newPage)
 {
-  if(isDisplayOff)
-    return;
-  display.clear();
+   if(isDisplayOff)
+     return;
+   drawStatusBar(newPage);
+   if (currentMenu)
+     return;
+   if(gpsConnectionError)
+     return;
    if(currentDisplay == 0)
-      drawPage1();
+      drawPage_ErrorInfo(newPage);
    else if(currentDisplay == 1)
-      drawPage2();
+      drawPage_NavigationInfo(newPage);
    else if(currentDisplay == 2)
-      drawPage3();
-   else if(currentDisplay == 3)
-      drawPage4();
-  display.display();
+      drawPage_LocationInfo(newPage);
 }
-
-void writepair(const String lefttext, const String righttext, const int row)
+void drawStatusBar(bool newPage)
 {
-  uint16_t y = row*fontHeight;
-  display.setTextAlignment(TEXT_ALIGN_LEFT);
-  display.drawString(0, y, lefttext);
-  display.setTextAlignment(TEXT_ALIGN_RIGHT);
-  display.drawString(128, y, righttext);
-}
-
-void writepair(const String lefttext, const float righttext, const int decimals, const int row)
-{
-  if(std::isnan(righttext))
-    writepair(lefttext, "---", row);
-  else
-    writepair(lefttext, String(righttext, decimals), row);
-}
-
-void writepair(const String lefttext, const float righttext, const String unit, const int decimals, const int row)
-{
-  if(std::isnan(righttext))
-    writepair(lefttext, "---", row);
-  else
-    writepair(lefttext, String(righttext, decimals) + unit, row);
-}
-
-void drawPage1()
-{ 
-  display.setFont(ArialMT_Plain_10);
-  writepair("Mode", mode(), 0);
-  writepair("Sats",String(sats()), 1);
-  if(std::isnan(latitude()))
-    writepair("Lat","---", 2);
-  else
-    writepair("Lat",String(latitude(), 2) + "*****" + latIndicator(), 2);
-  if(std::isnan(longitude()))
-    writepair("Lon","---", 3);
-  else
-    writepair("Lon",String(longitude(), 2) + "*****" + lonIndicator(), 3);
-
-  if(std::isnan(elevation()))
-    writepair("MSL","---", 4);
-  else
-    writepair("MSL",String(elevation(), 3) + "m", 4);
-
-  writepair("Time",gpstime(), 5);
-}
-
-void drawPage2()
-{ 
-  display.setFont(ArialMT_Plain_10);
-  writepair("Mode", mode(), 0);
-  writepair("Horizontal Error", horizontalError(), "m", 3, 1);
-  writepair("Vertical Error", verticalError(), "m", 3, 2);
-  writepair("HDOP ", hdop(), 3);
-  writepair("VDOP ", vdop(), 4);
-  writepair("PDOP ", pdop(), 5);
-}
-
-void drawPage3()
-{ 
-  int cx = 31;
-  int cy = 31;
-  display.drawCircle(cx, cy, 16);
-  int dx = 20;
-  int dy = 19;
-  display.drawLine(dx + 11, dy + 0,   dx + 17, dy + 11);
-  display.drawLine(dx + 17, dy + 11,  dx + 14, dy + 11);
-  display.drawLine(dx + 14, dy + 11,  dx + 14, dy + 23);
-  display.drawLine(dx + 14, dy + 11,  dx + 14, dy + 23);
-  display.drawLine(dx + 14, dy + 23,  dx + 8,  dy + 23);
-  display.drawLine(dx + 8,  dy + 23,  dx + 8,  dy + 11);
-  display.drawLine(dx + 8,  dy + 11,  dx + 5,  dy + 11);
-  display.drawLine(dx + 5,  dy + 11,  dx + 11, dy + 0);
-  float c = course() / 180.0 * M_PI;
-  float sn = sin(c);
-  float cn = cos(c);
-  display.setFont(ArialMT_Plain_10);
-  display.setTextAlignment(TEXT_ALIGN_CENTER);
-  display.drawLine(sn * 14 + cx, cn * 14 + cy, sn * 19 + cx, cn * 19 + cy);
-  display.drawString(sn * 25 + cx, cn * 25 + cy - 5, "S");
-
-  sn = sin(c + M_PI/2);
-  cn = cos(c + M_PI/2);  
-  display.drawLine(sn * 14 + cx, cn * 14 + cy, sn * 19 + cx, cn * 19 + cy);
-  display.drawString(sn * 25 + cx, cn * 25 + cy - 5, "E");
-
-  sn = sin(c + M_PI*2/2);
-  cn = cos(c + M_PI*2/2);  
-  display.drawLine(sn * 14 + cx, cn * 14 + cy, sn * 19 + cx, cn * 19 + cy);
-  display.drawString(sn * 25 + cx, cn * 25 + cy - 5, "N");
+  ucg.setFont(ucg_font_helvR08_hr);
   
-  sn = sin(c + M_PI*3/2);
-  cn = cos(c + M_PI*3/2);
-  display.drawLine(sn * 14 + cx, cn * 14 + cy, sn * 19 + cx, cn * 19 + cy);
-  display.drawString(sn * 25 + cx, cn * 25 + cy - 5, "W");
-
-  display.setTextAlignment(TEXT_ALIGN_LEFT);
-  display.drawString(64, 0, "Speed");
-  display.drawString(64, 32, "Course");
-  display.setFont(ArialMT_Plain_16);
-  display.drawString(64, 13, String(speed(),1) + "kn");
-  display.drawString(64, 45, String(course(),0) + "°");
-}
-
-void drawPage4()
-{ 
-  display.setFont(ArialMT_Plain_16);
-  display.setTextAlignment(TEXT_ALIGN_CENTER);
-  auto lat = String(latitude(), 2) + "*****" + latIndicator();
-  auto lon = String(longitude(), 2) + "*****" + lonIndicator();
-  auto z = String(elevation(), 3) + "m";
-  if(std::isnan(latitude()))
-    lat = "---";
-  if(std::isnan(longitude()))
-    lon = "---";
-  if(std::isnan(elevation()))
-    z = "---";
-  display.drawString(64, 4, lat);
-  display.drawString(64, 24, lon);
-  display.drawString(64, 44, z);
-}
-
-void onLocation(const char *type)
-{
-  if(type == "RMC")
-  {  
-    // Flash LED each time RMC is received
-    if(ledstate)
-      digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
-    else
-      digitalWrite(LED_BUILTIN, LOW);   // turn the LED on (HIGH is the voltage level)
-    ledstate = !ledstate;
+  if(newPage && currentMenu==nullptr) {
+    ucg.setColor(255, 255, 0);
+    ucg.drawHLine(0,10,128);
   }
-  if (type == "GSA") // GSA is the last message in the bursts
+  
+  if(gpsConnectionError)
   {
-    showDisplay();
+    ucg.setColor(255, 0, 0);
+    ucg.setPrintPos(20,64);
+    ucg.print("ERROR: GPS CHIP");
+    ucg.setPrintPos(20,84);
+    ucg.print("NOT DETECTED");
+    return;
   }
+  
+  //Fix quality
+  String m;
+  int q = quality();
+  ucg.setColor(0,255,0);
+  if(q == 0)
+  {
+    ucg.setColor(255,0,0);
+    m = "No Fix";
+  }
+  else if(q == 1)
+     m = "GPS   ";
+  else if(q == 2)
+     m = "DIFF  ";
+  else if(q == 3)
+     m = "PPS   ";
+  else if(q == 4)
+     m = "RTK   ";
+  else if(q == 5)
+  {
+    ucg.setColor(255,255,0);
+    m = "FLOAT ";
+  }
+  else {
+    ucg.setColor(255,0,0);
+     m = "---   ";
+  }
+  ucg.setPrintPos(0,8);
+  ucg.print(m);
+
+  // Horizontal error
+  auto err = horizontalError();
+  int decimals = 1;
+  if(err < .02)
+    decimals = 3;
+  else if(err < .2)
+    decimals = 2;
+  else if(err < 2)
+    decimals = 1;
+  auto str = (" " + String(err, decimals) + "m  ").c_str();
+  if(isnan(err))
+    str = "      ";
+  auto width = ucg.getStrWidth(str);
+  ucg.setColor(255, 255, 0);
+  ucg.setPrintPos(64-width/2+1,8); 
+  ucg.print(str);
+  if(!isnan(err))
+    drawBitmap(64-width/2-3, 1, 5, 7, plusminus, 255, 255, 0);
+
+  // Satellite count
+  if(newPage)
+    drawBitmap(100, 1, 10, 6, satBitmap, 255, 255, 0);
+  ucg.setColor(255, 255, 0);
+  ucg.setPrintPos(115,8);
+  ucg.print(String(sats()).c_str());
 }
-const int buttonPin = 2;
+const int buttonPin = 10;
 unsigned long lastButtonPressTime;
+//MenuItem menu;
+
+void configureGps()
+{
+  Wire.setClock(400000); //Increase I2C clock speed to 400kHz
+  gps.setI2COutput(COM_TYPE_UBX); //Sets I2C to communicate with just the UBX protocol
+  gps.setAutoPVT(true, true); //Tell the GPS to "send" each solution
+  gps.setAutoHPPOSLLH(true, true); //Tell the GPS to "send" each high-accuracy solution, accuracy etc
+  gps.setAutoDOP(true, true); //Tell the GPS to "send" each DOP value
+  gps.setSerialRate(115200, COM_PORT_UART2); // Configure speed on bluetooth port
+  gps.saveConfiguration(); //Save the current settings to flash and BBR
+  //gps.enableDebugging(Serial);
+}
+
 void setup()
 {
-    // Initialising the UI will init the display too.
-  display.init();  
-  display.flipScreenVertically();
-  display.clear();
-  setLocationHandler(onLocation);
-  Wire.begin();   
-  // Page 1
-  showDisplay();
-  initNmeaParser();
+  Serial.begin(115200);
+  //while (!Serial); //Wait for user to open terminal
+  Serial.println("App start");
   lastButtonPressTime = millis();
-  Serial1.begin(38400); //38400
-  Serial1.setTimeout(10);
+  Wire.begin();   
+  
+  //Serial1.setTimeout(10);
+  initButtons();
   pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(buttonPin, INPUT);
+  ucg.begin(UCG_FONT_MODE_SOLID);
+  ucg.clearScreen();
+  
+  ucg.setColor(255, 255, 255);
+  ucg.setFontMode(UCG_FONT_MODE_SOLID);
+
+  int count = 0;
+  bool gpsStarted = gps.begin(Wire);
+  while(!gpsStarted && count < 20)
+  {    
+    delay(100); // Wait for GPS to start up
+    gpsStarted = gps.begin(Wire);
+    count++;
+  }
+  if(!gpsStarted)
+      gpsConnectionError = true;
+  if(!gpsConnectionError){
+    configureGps();
+  }
+  initSettingsMenu(&gps);
+  showDisplay(true);
+  menu->setDisplay(&ucg);
+  digitalWrite(LED_BUILTIN, HIGH);
 }
-int buttonState = 0;
+int buttonState = KEY_NONE;
 void loop()
 {
+  bool hasNewData = false;
+  bool requireFullRedraw = false;
+  if(!gpsConnectionError)
+    hasNewData = readData(&gps);
+  // Flash LED on each new data
+  if(hasNewData)
+  {
+    if(ledstate)
+     digitalWrite(LED_BUILTIN, HIGH);
+    else
+     digitalWrite(LED_BUILTIN, LOW);
+    ledstate = !ledstate;
+  }
+  else {
+    delay(1);
+  }
+  // Process UI
+  
   auto t = millis();
-  // Turn display off after 30 seconds of not pressing the button
+  auto newButtonState = getButtonState();
   if(t - lastButtonPressTime > 30000 && !isDisplayOff)
   {
+    // Turn display off after 30 seconds of not pressing any button
     isDisplayOff = true;
-    display.displayOff();
+    ucg.powerDown();
+    currentMenu = nullptr;
   }
-  // Check button state and turn screen back on or flip pages
-  auto newButtonState = digitalRead(buttonPin);
-  if (newButtonState != buttonState && newButtonState == HIGH) {
-    lastButtonPressTime = t;
-    if(isDisplayOff)
+  else if(newButtonState != KEY_NONE && isDisplayOff)
+  {
+    // A key was pressed -> Turn screen back on
+    isDisplayOff = false;
+    ucg.clearScreen();
+    ucg.powerUp();
+    requireFullRedraw = true;
+  }
+  else if(currentMenu == nullptr && newButtonState == KEY_SELECT && buttonState == KEY_SELECT && t - lastButtonPressTime > 1000)
+  {  
+    //Enter menu on hold
+    currentMenu = menu;
+    menu->reset();
+    menu->initScreen();
+  }
+  else if(currentMenu) // A menu is currently active
+  {
+    auto result = processMenu(currentMenu, &gps);
+    if(result == MENU_RESULT_EXIT)
     {
-      isDisplayOff = false;
-      display.displayOn();
+      currentMenu = nullptr;
+      ucg.clearScreen();
+      requireFullRedraw = true;
     }
-    else {
+  }
+  else if (newButtonState != buttonState && (newButtonState != KEY_NONE && newButtonState != KEY_SELECT))
+  {
+    // flip status pages
+    if(newButtonState == KEY_RIGHT || newButtonState == KEY_DOWN)
+    {
       currentDisplay++;
-      if(currentDisplay > 3)
+      if(currentDisplay > 2)
         currentDisplay = 0;
     }
-    showDisplay();
+    else if(newButtonState == KEY_UP || newButtonState == KEY_LEFT)
+    {
+      currentDisplay--;
+      if(currentDisplay < 0)
+        currentDisplay = 2;
+    }
+    ucg.clearScreen();
+    requireFullRedraw = true;
   }
+  if(hasNewData || requireFullRedraw)
+    showDisplay(requireFullRedraw);
+  if (newButtonState != buttonState)
+      lastButtonPressTime = t; //reset button press inactivity timer
   buttonState = newButtonState;
-
-  //Parse serial NMEA data
-  readData();
 }

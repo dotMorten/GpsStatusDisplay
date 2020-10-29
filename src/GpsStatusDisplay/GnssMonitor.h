@@ -2,244 +2,137 @@
 #ifndef __GnssMonitor_h__
 #define __GnssMonitor_h__
 
-#include "NMEAParser.h"
-
-typedef void (*LocationHandler)(const char *type);
-NMEAParser<6> mParser; 
-static LocationHandler mLocationHandler;
 // State variables
 float mSpeed = 0;
 float mCourse = 0;
 float mLatitude = NAN;
-String mLatIndicator = "";
+char mLatIndicator = 'N';
 float mLongitude = NAN;
-String mLonIndicator = "";
+char mLonIndicator = 'E';
 float mElevation = NAN;
 String mMode = "---";
 float mVerticalError = NAN;
 float mHorizontalError = NAN;
-String mHdop = "---";
-String mVdop = "---";
-String mPdop = "---";
+float mHdop = NAN;
+float mVdop = NAN;
+float mPdop = NAN;
+int8_t mFixType = 0;
 int mSats = 0;
+int mQuality = 0;
 String mGpstime = "---";
+int mSatsBySystem [5] = { 0, 0, 0, 0, 0 }; 
 
-void raiseLocationEvent(const char *type)
+char buf[1024];
+bool readData(SFE_UBLOX_GPS *gps)
 {
-  if (mLocationHandler != NULL)
-  {
-     mLocationHandler(type);
-  }
-};
-void handleRMCMessage(void)
-{
-  String speedStr;
-  if (mParser.getArg(6, speedStr) && speedStr.length() > 0)
-  {
-    mSpeed = speedStr.toFloat();
-  }
-  else 
-  {
-    mSpeed = 0;
-  }
-  String courseStr;
-  if (mParser.getArg(7, courseStr) && courseStr.length() > 0)
-  {
-    mCourse = courseStr.toFloat();
-  }
-  raiseLocationEvent("RMC");
-};
-void handleGGAMessage(void)
-{
-  float lat;
-  float lon;
-  if (mParser.getArg(1, lat) && mParser.getArg(3, lon))
-  {
-    // Write latitude
-    String strlat;
-    mParser.getArg(1, strlat);
-    mParser.getArg(2, mLatIndicator);
-    mLatitude = strlat.substring(0,2).toFloat() + strlat.substring(2).toFloat() / 60;
-    // Write longitude
-    String strlon;
-    mParser.getArg(3, strlon);
-    mParser.getArg(4, mLonIndicator);
-    mLongitude = strlon.substring(0,3).toFloat() + strlon.substring(3).toFloat() / 60;
-  }
-  else
-  {
-    mLatitude = NAN;
-    mLongitude = NAN;
-  }
-  // Write elevation
-  float el;
-  if(mParser.getArg(8, el))
-  {
-    mElevation = el;
-  }
-  else
-  {
-    mElevation = NAN;
-  }
-  
-  int quality = 0;
-  
-  mParser.getArg(5, quality);
-  if(quality == 0)
-     mMode = "No Fix";
-  else if(quality == 1)
-     mMode = "GPS Fix";
-  else if(quality == 2)
-     mMode = "Differential";
-  else if(quality == 3)
-     mMode = "GPS PPS";
-  else if(quality == 4)
-     mMode = "RTK";
-  else if(quality == 5)
-     mMode = "RTK Float";
-  else if(quality == 6)
-     mMode = "Estimated";
-  else
-     mMode = "---";
-
-  int satCount = 0;
-  mParser.getArg(6, satCount);
-  //writepair("Satellites", String(satCount), 1, display);
-  mSats = satCount;
-  String time;
-  if(mParser.getArg(0, time))
-      mGpstime = time.substring(0,2) + ":" + time.substring(2,4) + ":" + time.substring(4,6);
-  else
-    mGpstime = "---";
-  raiseLocationEvent("GGA");
-};
-
-void handleGSAMessage(void)
-{
-  int count = mParser.argCount();
-  int systemId;
-  if(mParser.getArg(count-1, systemId) && systemId == 1)
-  {
-    if(count > 4 && mParser.getArg(count - 4, mPdop) && mParser.getArg(count - 3, mHdop) && mPdop.length() > 0 && mHdop.length() > 0
-    && mParser.getArg(count - 2, mVdop)) 
+  bool result = false;
+  if (gps->getPVT())
+  {    
+    mSpeed = gps->getGroundSpeed() * 0.00194384449;
+    mCourse = gps->getHeading()/ 100000.0;
+    mElevation = gps->getAltitude() / 1000.0;
+    mLatitude = gps->getLatitude() / 10000000.0;
+    if(mLatitude <0)
     {
+      mLatIndicator = 'S';
+      mLatitude = -mLatitude;
     }
     else 
+      mLatIndicator = 'N';
+    mLongitude = gps->getLongitude() / 10000000.0;
+    if(mLongitude <0)
     {
-       mPdop = "---";
-       mHdop = "---";
-       mVdop = "---";
+      mLonIndicator = 'W';
+      mLongitude = -mLongitude;
     }
-  }
-  raiseLocationEvent("GSA");
-};
-
-void handleGSTMessage(void)
-{
-  float error_lat;
-  float error_lon;
-  
-  if (mParser.getArg(5, error_lat) && mParser.getArg(6, error_lon))
-  {
-    float error = sqrt(error_lat * error_lat + error_lon * error_lon);
-    mHorizontalError = error;
-  }
-  else
-  {
-    String error;
-    mParser.getArg(5, error);
-    mHorizontalError = NAN;
-  }
-  float error_v;
-  if (mParser.getArg(7, error_v))
-  {
-    mVerticalError = error_v;
-  }
-  else
-  {
-    mVerticalError = NAN;
-  }
-  raiseLocationEvent("GST");
-};
-
-void handleGSVMessage(void)
-{
-  //char buf[6];
-  //mParser.getType(buf);  
-};
-
-void handleVTGMessage(void)
-{/*
-  if (!mParser.getArg(0, mCourse) && !mParser.getArg(1, mCourse))
-  {
-    mCourse = -999;
-  }
-  if (!mParser.getArg(2, mSpeed))
-  {
-    mSpeed = -1;
-  }
-  raiseLocationEvent("VTG");*/
-};
-
-void unknownCommandMessage()
-{
-  //char buf[6];
-  //mParser.getType(buf);
-  //if(buf == "GNVTG" || buf == "GNGLL)
-   // return;
-  //write(buf, 1, 0);
-};
-
-void errorHandlerMessage()
-{
-  //char buf[6];
-  //mParser.getType(buf);  
-  //write(String(mParser.error()) + " " + buf, 6, 0); 
-};
-
-  void initNmeaParser() 
-  {    
-     mParser.addHandler("GNRMC", handleRMCMessage);
-     mParser.addHandler("GNGGA", handleGGAMessage);
-     mParser.addHandler("GNGST", handleGSTMessage);
-     mParser.addHandler("GNGSA", handleGSAMessage);
-     mParser.addHandler("--GSV", handleGSVMessage);
-     mParser.addHandler("GNVTG", handleVTGMessage);
-     mParser.setDefaultHandler(unknownCommandMessage);
-  };
-  
-  void setLocationHandler(LocationHandler inHandler)
-  {
-    mLocationHandler = inHandler;
-  };
-  
-char buf[1024];
-void readData()
-{
-  int count;
-  if (Serial1.available())
-  {
-    while((count = Serial1.readBytes(buf, 1024)) > 0)
+    else 
+      mLonIndicator = 'E';
+    mGpstime = String(gps->getHour()) + ":" + String(gps->getMinute())+ ":" + String(gps->getSecond());
+    auto sol = gps->getCarrierSolutionType();
+    mFixType = gps->getFixType();
+    bool isValid = gps->getGnssFixOk();
+    bool diffSoln = gps->getDiffSoln();
+    if(sol == 1) {
+      mMode = "RTK Float";
+      mQuality = 5;
+    }
+    else if(sol == 2) {
+      mMode = "RTK";
+      mQuality = 4;
+    }
+    else if(!isValid)
     {
-      for(int i=0;i<count;i++)
-        mParser << buf[i];
+      mQuality = 0;
+      mMode = "No fix";
     }
-  }
-};
+    else if(diffSoln)
+    {
+      mMode = "Differential";
+      mQuality = 2;
+    }
+    else {
+      if(mFixType == 0) {
+         mQuality = 0;
+         mMode = "No fix";
+      }
+      else if(mFixType == 2) {
+         mMode = "Dead Reckoning";
+         mQuality = 0;
+      }
+      else if(mFixType == 2) {
+         mMode = "GPS 2D";
+         mQuality = 1;
+      }
+      else if(mFixType == 3) {
+         mMode = "GPS";
+         mQuality = 1;
+      }
+      else if(mFixType == 4) {
+         mMode = "Differential";
+         mQuality = 2;
+      }
+      else if(mFixType == 5) {
+         mMode = "Time-only fix";
+         mQuality = 0;
+      }
+      else
+         mMode = String(mFixType) + ":" + String(sol); // "???";
+    }
+    mSats = gps->getSIV();
+    result = true;
 
-  float speed() { return mSpeed; }
-  float course() { return mCourse; }
-  float latitude() { return mLatitude; }
-  String latIndicator() { return mLatIndicator; }
-  float longitude() { return mLongitude; }
-  String lonIndicator() { return mLonIndicator; }
-  float elevation() { return mElevation; }
+  }
+  if (gps->getHPPOSLLH())
+  {
+    mVerticalError = gps->getVerticalAccuracy() / 10000.0;
+    mHorizontalError = gps->getHorizontalAccuracy() / 10000.0;
+    result = true;
+  }
+  if (gps->getDOP())
+  {
+    mPdop = gps->getPositionDOP() / 100.0;
+    mHdop = gps->getHorizontalDOP() / 100.0;
+    mVdop = gps->getVerticalDOP() / 100.0;
+    result = true;
+  }
+  return result;
+};
+  bool hasFix() { return mFixType > 0; };
+  int8_t fixType() { return mFixType; };
+  float speed() { return hasFix() ? mSpeed : NAN; };
+  float course() { return hasFix() ? mCourse : NAN; }; 
+  float latitude() { return hasFix() ? mLatitude : NAN; };
+  char latIndicator() { return mLatIndicator; }
+  float longitude() { return hasFix() ? mLongitude : NAN; }
+  char lonIndicator() { return mLonIndicator; }
+  float elevation() { return hasFix() ? mElevation : NAN; }
   String mode() { return mMode; }
-  float verticalError() { return mVerticalError; }
-  float horizontalError() { return mHorizontalError; }
-  String hdop() { return mHdop; }
-  String vdop() { return mVdop; }
-  String pdop() { return mPdop; }
-  int sats() { return mSats; }
+  float verticalError() { return hasFix() ? mVerticalError : NAN; }
+  float horizontalError() { return hasFix() ? mHorizontalError : NAN; }
+  float hdop() { return hasFix() && mHdop < 99.9 ? mHdop : NAN; }
+  float vdop() { return hasFix() && mVdop < 99.9 ? mVdop : NAN; }
+  float pdop() { return hasFix() && mPdop < 99.9 ? mPdop : NAN; }
+  int sats() { return mSats; } // mSatsBySystem[0] + mSatsBySystem[1] + mSatsBySystem[2] + mSatsBySystem[3] + mSatsBySystem[4]; }
+  int quality() { return mQuality; }
   String gpstime() { return mGpstime; }
 #endif
