@@ -1,29 +1,25 @@
 #ifndef _MENU_H_
 #define _MENU_H_
 
-#define KEY_NONE 0
-#define KEY_LEFT 1
-#define KEY_RIGHT 2
-#define KEY_UP 3
-#define KEY_DOWN 4
-#define KEY_SELECT 5
 #define KEY_INITIALIZING 6
 #define MENU_RESULT_EXIT -2
 
 #include <Arduino.h>
 #include <Ucglib.h> //http://librarymanager/All#Ucglib
+#include "buttons.h"
+
 class MenuItem
 {
   public:
-    MenuItem(const int id, const char* title, const char* value = nullptr)
-     : _id(id), _title(title), _childCount(0)
+    MenuItem(const int id, const char* title, const char* value = nullptr, const uint32_t tag = 0)
+     : _id(id), _title(title), _childCount(0), _tag(tag)
     {
       _children = nullptr;
       _parent = nullptr;
       _value = value;
     };
     MenuItem(const int id, const char* title, MenuItem** children,  const uint8_t childCount)
-     : _id(id), _title(title), _childCount(childCount)
+     : _id(id), _title(title), _childCount(childCount), _tag(0)
     {
       _children = children;
       _parent = nullptr;
@@ -35,14 +31,19 @@ class MenuItem
     MenuItem* getChild(uint8_t i) { return _children[i]; };
     const uint8_t getChildCount() { return _childCount; };
     const int getId() { return _id; };
-    const char* getValue() { return _value; };
-    void setValue(const char* value) { _value = value; };
+    String getValue() { return _value; };
+    const uint32_t getTag() { return _tag; };
+    void setValue(const char *value) { _value = String(value); };
+    void setValue(String value) { _value = value; };
+    void setChildren(MenuItem** children,  const uint8_t childCount) { _children = children, _childCount = childCount; };
+    void setTitle(const char* title) { _title = title; };
   private:
     void setParent(MenuItem* parent) { _parent=parent; }
     const int _id;
     const char* _title;
-    const char* _value;
-    const uint8_t _childCount;
+    String _value;
+    uint8_t _childCount;
+    const uint32_t _tag;
     MenuItem** _children;
     MenuItem* _parent;
 };
@@ -80,11 +81,5 @@ class Menu
     uint8_t screen_height = 128;
     uint8_t scrollOffset = 0;
     Ucglib *_ucg;
-    // Button pin IDs
-    uint8_t uiKeyUp = 6;
-    uint8_t uiKeySelect = 11;
-    uint8_t uiKeyLeft = 5;
-    uint8_t uiKeyDown = 10;
-    uint8_t uiKeyRight = 9;
 };
 #endif

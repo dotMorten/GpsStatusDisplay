@@ -5,17 +5,15 @@ Menu::Menu(MenuItem* menuItem)
   rootMenu = menuItem; 
   currentMenu = menuItem;
   clearMenuIndex = -1;
-  selectedIndex = 0;
- 
+  selectedIndex = 0; 
 }
     
 void Menu::initScreen()
 {
   drawHeader();
   currentButton = KEY_NONE;
-  show();
-
-  if (digitalRead(uiKeySelect) == LOW) // Ensure select isn't triggered when launching if already pressed
+  show(); 
+  if (getButtonState() == KEY_SELECT) // Ensure select isn't triggered when launching if already pressed
     currentButton = KEY_INITIALIZING;
 }
 void Menu::drawHeader()
@@ -101,13 +99,14 @@ void Menu::show()
     ucg->drawString(2, y, 0, text);
     if(item->getChildCount() > 0)
       ucg->drawString(120, y, 0, ">");
-   auto value = item->getValue();
-   if(value)
-   {
-     auto width = ucg->getStrWidth(value);
-     ucg->drawString(screen_width - width - 1, y, 0, value);
-   }
-    //ucg->setColor(1, 0, 0, 0);
+    else {
+      auto value = item->getValue();
+      if(value != nullptr)
+      {
+        auto width = ucg->getStrWidth(value.c_str());
+        ucg->drawString(screen_width - width - 1, y, 0, value.c_str());
+      }
+    }
     y += yPadding;
   }
 }
@@ -174,24 +173,10 @@ int Menu::select()
 int Menu::processMenu()
 {
   int result = -1;
-  int button = KEY_NONE;
-  if ( digitalRead(uiKeyLeft) == LOW )
-    button = KEY_LEFT;
-  else if ( digitalRead(uiKeyRight) == LOW )
-    button = KEY_RIGHT;
-  else if ( digitalRead(uiKeyUp) == LOW )
-    button = KEY_UP;
-  else if ( digitalRead(uiKeyDown) == LOW )
-    button = KEY_DOWN;
-  else if ( digitalRead(uiKeySelect) == LOW)
-  {
-    if(currentButton != KEY_INITIALIZING)
-      button = KEY_SELECT;
-    else
-      button = KEY_INITIALIZING;
-  }
-  else 
-    button = KEY_NONE;
+  int button = getButtonState();
+  if(button == KEY_SELECT && currentButton == KEY_INITIALIZING)
+    button = KEY_INITIALIZING;
+
   auto oldButton = currentButton;
   currentButton = button;
   if (oldButton != currentButton)
