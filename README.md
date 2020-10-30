@@ -30,6 +30,9 @@ For antenna you can pretty much use any GPS antenna rated for multi-band L1 and 
 - [NmeaParser](https://github.com/dotMorten/NmeaParser) - My library to process NMEA data from the device, as well as sending it NTRIP Correction Data for full RTK 10mm accuracy
 - [SparkFun u-blox Arduino Library](https://github.com/sparkfun/SparkFun_Ublox_Arduino_Library)
 - [UcgLib](https://github.com/olikraus/ucglib) - Display library used for rendering to the OLED display
+
+### Display example:
+![gpsdisplay_4](https://user-images.githubusercontent.com/1378165/97663689-7a299100-1a37-11eb-9d00-08eab29f479d.gif)
  
 ### Connection Diagram
 
