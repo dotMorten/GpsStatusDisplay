@@ -10,6 +10,11 @@
 
 #define CFG_SBAS_USE_DIFFCORR 0x10360004
 
+#define CFG_USBOUTPROT_NMEA 0x10780002 // Flag to indicate if NMEA should be an outputprotocol on USB
+#define CFG_USBOUTPROT_RTCM3X 0x10780004 // Flag to indicate if RTCM3X should be an outputprotocol on USB
+#define CFG_UART2OUTPROT_NMEA 0x10760002 // Flag to indicate if NMEA should be an outputprotocol on UART2
+#define CFG_UART2OUTPROT_RTCM3X 0x10760004 // Flag to indicate if RTCM3X should be an outputprotocol on UART2
+
 uint8_t customPayload[MAX_PAYLOAD_SIZE]; // This array holds the payload data bytes
 ubxPacket customCfg = {0, 0, 0, 0, 0, customPayload, 0, 0, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED};
 struct minfoStructure // Structure to hold the module info (uses 341 bytes of RAM)
@@ -49,13 +54,10 @@ boolean getModuleInfo(SFE_UBLOX_GPS *gps, uint16_t maxWait)
         minfo.extension[i][0] = 0;
     minfo.extensionNo = 0;
 
-    if(sendCommand(gps, UBX_CLASS_MON, UBX_MON_VER, 0, nullptr) != SFE_UBLOX_STATUS_DATA_RECEIVED)
-      return false;
-
     // Now let's send the command. The module info is returned in customPayload
 
-    //if (sendCommand(&UBX_CLASS_MON, UBX_MON_VER, 0) != SFE_UBLOX_STATUS_DATA_RECEIVED)
-        return (false); //If command send fails then bail
+    if(sendCommand(gps, UBX_CLASS_MON, UBX_MON_VER, 0, nullptr) != SFE_UBLOX_STATUS_DATA_RECEIVED)
+      return false; // If command send fails then bail
 
     // Now let's extract the module info from customPayload
 

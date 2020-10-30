@@ -6,7 +6,7 @@
   File: GpsStatusDisplay.ino
 
   3rd party libs used:
-  ucglib : https://github.com/olikraus/ucglib   http://librarymanager/All#Ucglib
+  ucglib : https://github.com/olikraus/ucglib  v1.5.2 http://librarymanager/All#Ucglib
   SparkFun u-blox lib: https://github.com/sparkfun/SparkFun_Ublox_Arduino_Library   http://librarymanager/All#SparkFun_Ublox_GPS
 */
 
@@ -53,7 +53,8 @@ void showDisplay(bool newPage)
 }
 void drawStatusBar(bool newPage)
 {
-  ucg.setFont(ucg_font_helvR08_hr);
+  ucg.setFont(ucg_font_helvR08_hr);  
+  ucg.setFontMode(UCG_FONT_MODE_SOLID);
   
   if(newPage && currentMenu==nullptr) {
     ucg.setColor(255, 255, 0);

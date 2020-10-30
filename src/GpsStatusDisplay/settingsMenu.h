@@ -12,30 +12,24 @@ const int USBSETTINGSMENUID = CONNECTIONSMENUID+100;
 const int BLUETOOTHSETTINGSMENUID = CONNECTIONSMENUID+200;
   MenuItem *gnssMenuItems[] =
   {
+    new MenuItem(GNSSMENUID + 6, "Rate", "---"),
+    new MenuItem(GNSSMENUID + 5, "High Precision", "On"),
     new MenuItem(GNSSMENUID + 1, "GPS", "Enabled"),
     new MenuItem(GNSSMENUID + 2, "GLONASS", "Enabled"),
     new MenuItem(GNSSMENUID + 3, "Galileo", "Enabled"),
     new MenuItem(GNSSMENUID + 4, "Beidou", "Enabled"),
-    new MenuItem(GNSSMENUID + 5, "High Precision Mode"),
-    new MenuItem(GNSSMENUID + 6, "Rate", "---")
   };
   MenuItem *aboutMenuItems[] =
   {
     new MenuItem(ABOUTMENUID + 1, "Version", "1.0"),
-    new MenuItem(ABOUTMENUID + 2, "GPS Info"),
-  };
-  MenuItem *USBSettingsMenuItems[] =
-  {
-    new MenuItem(USBSETTINGSMENUID + 1, "Output", "---"),
-  };
-  MenuItem *BluetoothSettingsMenuItems[] =
-  {
-    new MenuItem(BLUETOOTHSETTINGSMENUID + 1, "Output", "---"),
+    new MenuItem(ABOUTMENUID + 2, "Device Info"),
+    new MenuItem(ABOUTMENUID + 3, "Reset"),
+    new MenuItem(ABOUTMENUID + 4, "Privacy Mode", "Off"),
   };
   MenuItem *connectionsMenuItems[] =
   {
-    new MenuItem(CONNECTIONSMENUID + 1, "USB", USBSettingsMenuItems, 1),
-    new MenuItem(CONNECTIONSMENUID + 2, "Bluetooth", BluetoothSettingsMenuItems, 1),
+    new MenuItem(CONNECTIONSMENUID + 1, "USB", "---"),
+    new MenuItem(CONNECTIONSMENUID + 2, "Bluetooth", "---"),
   };
   MenuItem *enabledNmeaMessagesItems[] = {    
     new MenuItem(NMEAMSGMENUID, "GGA", "--", CFG_MSGOUT_NMEA_ID_GGA_USB),
@@ -60,15 +54,14 @@ const int BLUETOOTHSETTINGSMENUID = CONNECTIONSMENUID+200;
 
   MenuItem *mainMenuItems[] =
   {
-    new MenuItem(1, "Connections", connectionsMenuItems, 2),
+    new MenuItem(1, "Outputs", connectionsMenuItems, 2),
     new MenuItem(2, "NMEA", nmeaSettingsMenuItems, 2),
-    new MenuItem(3, "RTCM", "TODO"),
+    new MenuItem(3, "RTCM", ">"),
     new MenuItem(4, "SBAS", "---"),
     new MenuItem(5, "GNSS", gnssMenuItems, 6),
-    new MenuItem(6, "Reset"),
-    new MenuItem(7, "Info/About", aboutMenuItems, 2)
+    new MenuItem(6, "Info/About", aboutMenuItems, 4)
   };
-Menu *menu = new Menu(new MenuItem(0, "Settings", mainMenuItems, 7));
+Menu *menu = new Menu(new MenuItem(0, "Settings", mainMenuItems, 6));
 MenuItem *gpsInfoMenu[] =
     {
       new MenuItem(0, "Hardware Version"),
@@ -89,9 +82,8 @@ int initSettingsMenu(SFE_UBLOX_GPS *gps)
 {
   auto sbas = gps->getVal8(CFG_SBAS_USE_DIFFCORR);
   mainMenuItems[3]->setValue(sbas == 0 ? "Disabled" : "Enabled");
-  //auto frequency = gps->getNavigationFrequency();
   auto frequency = gps->getVal16(UBLOX_CFG_RATE_MEAS);
-  gnssMenuItems[5]->setValue((String(frequency) + " ms").c_str());
+  gnssMenuItems[0]->setValue((String(frequency) + " ms").c_str());
   for(uint8_t i = 0; i<13; i++) {
     auto child = enabledNmeaMessagesItems[i];
     child->setValue(gps->getVal8(child->getTag()) > 0 ? "Enabled" : "Disabled");
@@ -111,16 +103,25 @@ int initSettingsMenu(SFE_UBLOX_GPS *gps)
   else 
     nmeaSettingsMenuItems[0]->setValue("v?.?");
   
-  // Get USB Port settings:
-  uint8_t payload[] = { COM_PORT_USB };
-  sendCommand(gps, UBX_CLASS_CFG, UBX_CFG_PRT, 1, payload);
-  //gps->getVal8(
-  /*auto outtype = getval8(14);
-  if(outtype == COM_TYPE_NMEA)
-    USBSettingsMenuItems[0]->setValue("NMEA");
-  else if(outtype == COM_TYPE_RTCM3)
-    USBSettingsMenuItems[0]->setValue("RTCM");
-*/
+  auto nmeaOn = gps->getVal8(CFG_USBOUTPROT_NMEA);
+  auto rtcmOn = gps->getVal8(CFG_USBOUTPROT_RTCM3X);
+  if(nmeaOn && rtcmOn)
+    connectionsMenuItems[0]->setValue("NMEA+RTCM");
+  else if(nmeaOn)
+    connectionsMenuItems[0]->setValue("NMEA");
+  else if(rtcmOn)
+    connectionsMenuItems[0]->setValue("RTCM");
+    
+  nmeaOn = gps->getVal8(CFG_UART2OUTPROT_NMEA);
+  rtcmOn = gps->getVal8(CFG_UART2OUTPROT_RTCM3X);
+  if(nmeaOn && rtcmOn)
+    connectionsMenuItems[1]->setValue("NMEA+RTCM");
+  else if(nmeaOn)
+    connectionsMenuItems[1]->setValue("NMEA");
+  else if(rtcmOn)
+    connectionsMenuItems[1]->setValue("RTCM");
+
+/*
   int menuCount = 4;
   if(getModuleInfo(gps, 1100))
   {
@@ -138,6 +139,7 @@ int initSettingsMenu(SFE_UBLOX_GPS *gps)
     gpsInfoMenu[1]->setTitle("N/A");
   }
   aboutMenuItems[1]->setChildren(gpsInfoMenu, menuCount);
+  */
 };
 int resetGps(SFE_UBLOX_GPS *gps)
 {
@@ -147,6 +149,7 @@ int resetGps(SFE_UBLOX_GPS *gps)
   gps->setSerialRate(115200, COM_PORT_UART2); // Configure speed on bluetooth port
   //gps->setNavigationFrequency(1);
   gps->saveConfiguration(); //Save the current settings to flash and BBR
+  initSettingsMenu(gps);
 }
 int processMenu(Menu *currentMenu, SFE_UBLOX_GPS *gps)
 {
@@ -156,37 +159,8 @@ int processMenu(Menu *currentMenu, SFE_UBLOX_GPS *gps)
     {
       return result;
     }
-    else if(result == 1) // Connections
-    {
-      auto item = currentMenu->selectedMenuItem();
-      if(item->getValue() == "On")
-        item->setValue("Off");
-      else
-        item->setValue("On");
-      currentMenu->refresh();
-    }
-    else if(result == 2) // Connections
-    {
-      auto item = currentMenu->selectedMenuItem();
-      if(item->getValue() == "Enabled")
-        item->setValue("Disabled");
-      else
-        item->setValue("Enabled");
-      currentMenu->refresh();
-    }
-    else if(result == 3) // Connections
-    {
-      auto item = currentMenu->selectedMenuItem();
-      if(item->getValue() == "Enabled")
-        item->setValue("Disabled");
-      else
-        item->setValue("Enabled");
-      currentMenu->refresh();
-    }
     else if(result == 4) // SBAS
     {
-      //auto item = currentMenu->selectedMenuItem();
-
       uint8_t sbas = gps->getVal8(CFG_SBAS_USE_DIFFCORR);
       if(sbas == 0)
         sbas = 1;
@@ -200,34 +174,54 @@ int processMenu(Menu *currentMenu, SFE_UBLOX_GPS *gps)
         item->setValue("Enabled");*/
       currentMenu->refresh();
     }
-    else if(result == USBSETTINGSMENUID + 1) // USB Output
+    else if(result == CONNECTIONSMENUID + 1) // USB Output
     {
       auto item = currentMenu->selectedMenuItem();
+      bool nmeaOn = false;
+      bool rtcmOn = false;
       if(item->getValue() == "NMEA") {
-        item->setValue("RTCM");
-        gps->setUSBOutput(COM_TYPE_RTCM3);
-        gps->saveConfiguration(); 
+        rtcmOn=true;
       }
+      /*else if(item->getValue() == "RTCM") {
+        rtcmOn=true;
+        nmeaOn=true;
+      }*/
       else {
-        item->setValue("NMEA");
-        gps->setUSBOutput(COM_TYPE_NMEA);
-        gps->saveConfiguration(); 
-      }
+        nmeaOn = true;
+      }    
+      gps->setVal8(CFG_USBOUTPROT_NMEA, nmeaOn ? 1 : 0, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR);
+      gps->setVal8(CFG_USBOUTPROT_RTCM3X, rtcmOn ? 1 : 0, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR);
+      if(nmeaOn && rtcmOn)
+        connectionsMenuItems[0]->setValue("NMEA+RTCM");
+      else if(nmeaOn)
+        connectionsMenuItems[0]->setValue("NMEA");
+      else if(rtcmOn)
+        connectionsMenuItems[0]->setValue("RTCM");
       currentMenu->refresh();
     }
-    else if(result == BLUETOOTHSETTINGSMENUID + 1) // Bluetooth Output
+    else if(result == CONNECTIONSMENUID + 2) // Bluetooth Output
     {
       auto item = currentMenu->selectedMenuItem();
+      bool nmeaOn = false;
+      bool rtcmOn = false;
       if(item->getValue() == "NMEA") {
-        item->setValue("RTCM");
-        gps->setUART2Output(COM_TYPE_RTCM3);
-        gps->saveConfiguration(); 
+        rtcmOn=true;
       }
+      /*else if(item->getValue() == "RTCM") {
+        rtcmOn=true;
+        nmeaOn=true;
+      }*/
       else {
-        item->setValue("NMEA");
-        gps->setUART2Output(COM_TYPE_NMEA);
-        gps->saveConfiguration(); 
-      }
+        nmeaOn = true;
+      }    
+      gps->setVal8(CFG_UART2OUTPROT_NMEA, nmeaOn ? 1 : 0, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR);
+      gps->setVal8(CFG_UART2OUTPROT_RTCM3X, rtcmOn ? 1 : 0, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR);
+      if(nmeaOn && rtcmOn)
+        connectionsMenuItems[1]->setValue("NMEA+RTCM");
+      else if(nmeaOn)
+        connectionsMenuItems[1]->setValue("NMEA");
+      else if(rtcmOn)
+        connectionsMenuItems[1]->setValue("RTCM");
       currentMenu->refresh();
     }
     else if(result == GNSSMENUID + 6) // Navigation rate
@@ -260,19 +254,6 @@ int processMenu(Menu *currentMenu, SFE_UBLOX_GPS *gps)
         nmeaVersion = CFG_NMEA_PROTVER_V411;
       else if(value == "v4.11")
         nmeaVersion = CFG_NMEA_PROTVER_V21;
-      /*
-      
-      if(nmeaVersion == (uint8_t)CFG_NMEA_PROTVER_V21)
-        nmeaVersion = CFG_NMEA_PROTVER_V23;
-      else if(nmeaVersion == (uint8_t)CFG_NMEA_PROTVER_V23)
-        nmeaVersion = CFG_NMEA_PROTVER_V40;
-      else if(nmeaVersion == (uint8_t)CFG_NMEA_PROTVER_V40)
-        nmeaVersion = CFG_NMEA_PROTVER_V41;
-      else if(nmeaVersion == (uint8_t)CFG_NMEA_PROTVER_V41)
-        nmeaVersion = CFG_NMEA_PROTVER_V411;
-      else if(nmeaVersion == (uint8_t)CFG_NMEA_PROTVER_V411)
-        nmeaVersion = CFG_NMEA_PROTVER_V21;
-      else return -1;*/
       if(gps->setVal(CFG_NMEA_PROTVER, nmeaVersion, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR))
       {
         if(nmeaVersion == CFG_NMEA_PROTVER_V21)
@@ -296,11 +277,6 @@ int processMenu(Menu *currentMenu, SFE_UBLOX_GPS *gps)
       bool enabled =  (item->getValue() == "Enabled");
       //uint8_t id = result - NMEAMSGMENUID;
       bool isok = gps->setVal8(messageid, enabled ? 0 : 1, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR);
-      /*bool isok = false;
-      if(enabled)
-        isok = gps->disableNMEAMessage(id, COM_PORT_UART2) && gps->disableNMEAMessage(id, COM_PORT_USB);
-      else
-        isok = gps->enableNMEAMessage(id, COM_PORT_UART2) && gps->enableNMEAMessage(id, COM_PORT_USB);*/
       if(isok)
       {
         if(enabled) item->setValue("Disabled");
@@ -309,9 +285,16 @@ int processMenu(Menu *currentMenu, SFE_UBLOX_GPS *gps)
       }
     }
   
-    else if(result == 6) // Reset
+    else if(result == ABOUTMENUID + 3) // Reset
     {
       resetGps(gps);
+    }
+    else if(result == ABOUTMENUID + 4) // toggle privacy mode
+    {
+      privacy = !privacy;
+      auto item = currentMenu->selectedMenuItem();
+      item->setValue(privacy ? "On" : "Off");
+      currentMenu->refresh();
     }
     else if(result > 0) {
       Serial.println("UNKNOWN MENU ID: " + String(result));

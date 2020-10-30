@@ -25,6 +25,7 @@ void writeDop(float dop, uint8_t y)
 void drawPage_ErrorInfo(bool newPage)
 {    
   auto fontHeight = 14;
+  ucg.setFontMode(UCG_FONT_MODE_SOLID);
   if(newPage)
   {
     ucg.setFont(ucg_font_helvR08_hr);
@@ -59,6 +60,7 @@ void drawPage_ErrorInfo(bool newPage)
 float lastCourse;
 void drawPage_NavigationInfo(bool newPage)
 { 
+  ucg.setFontMode(UCG_FONT_MODE_SOLID);
   ucg.setColor(255, 255, 255);
   auto currentCourse = course();
   bool isValid = true;
@@ -132,6 +134,7 @@ void drawPage_NavigationInfo(bool newPage)
 
 void drawPage_LocationInfo(bool newPage)
 { 
+  ucg.setFontMode(UCG_FONT_MODE_SOLID);
   ucg.setColor(255, 255, 255);
   ucg.setFont(ucg_font_helvR14_hr);
   int decimals = 6;
