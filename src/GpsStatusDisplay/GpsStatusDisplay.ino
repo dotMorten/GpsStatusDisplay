@@ -136,7 +136,7 @@ void configureGps()
   gps.setI2COutput(COM_TYPE_UBX); //Sets I2C to communicate with just the UBX protocol
   gps.setAutoPVT(true, true); //Tell the GPS to "send" each solution
   gps.setAutoHPPOSLLH(true, true); //Tell the GPS to "send" each high-accuracy solution, accuracy etc
-  gps.setAutoDOP(true, true); //Tell the GPS to "send" each DOP value
+  gps.setAutoDOP(true, true); //Tell the GPS to "send" each DOP value     
   gps.setSerialRate(115200, COM_PORT_UART2); // Configure speed on bluetooth port
   gps.saveConfiguration(); //Save the current settings to flash and BBR
   //gps.enableDebugging(Serial);

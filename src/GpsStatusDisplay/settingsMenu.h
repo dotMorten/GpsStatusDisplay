@@ -49,13 +49,16 @@ const int BLUETOOTHSETTINGSMENUID = CONNECTIONSMENUID+200;
     MenuItem *nmeaSettingsMenuItems[] =
   {
     new MenuItem(NMEAMENUID + 1, "Version", "---"),
-    new MenuItem(NMEAMENUID + 2, "Messages", enabledNmeaMessagesItems, 13)
+    new MenuItem(NMEAMENUID + 2, "Messages", enabledNmeaMessagesItems, 13),
+    new MenuItem(NMEAMENUID + 3, "High Precision", "--"), // Enable high precision mode: CFG_NMEA_HIGHPREC  on/off
+    new MenuItem(NMEAMENUID + 4, "Compat Mode", "--"), // NMEA Compat mode: On/Off  CFG-NMEA-COMPAT (0x10930003)
+    new MenuItem(NMEAMENUID + 5, "Limit 82 chars", "--"), // Enable strict limit to 82 characters maximum NMEA message length: On/Off  - CFG-NMEA-LIMIT82 (0x10930005)
   };
 
   MenuItem *mainMenuItems[] =
   {
     new MenuItem(1, "Outputs", connectionsMenuItems, 2),
-    new MenuItem(2, "NMEA", nmeaSettingsMenuItems, 2),
+    new MenuItem(2, "NMEA", nmeaSettingsMenuItems, 5),
     new MenuItem(3, "RTCM", ">"),
     new MenuItem(4, "SBAS", "---"),
     new MenuItem(5, "GNSS", gnssMenuItems, 6),
@@ -102,6 +105,10 @@ int initSettingsMenu(SFE_UBLOX_GPS *gps)
     nmeaSettingsMenuItems[0]->setValue("v4.11");
   else 
     nmeaSettingsMenuItems[0]->setValue("v?.?");
+
+  nmeaSettingsMenuItems[2]->setValue(gps->getVal8(CFG_NMEA_HIGHPREC) ? "On" : "Off");
+  nmeaSettingsMenuItems[3]->setValue(gps->getVal8(CFG_NMEA_COMPAT) ? "On" : "Off");
+  nmeaSettingsMenuItems[4]->setValue(gps->getVal8(CFG_NMEA_LIMIT82) ? "On" : "Off");
   
   auto nmeaOn = gps->getVal8(CFG_USBOUTPROT_NMEA);
   auto rtcmOn = gps->getVal8(CFG_USBOUTPROT_RTCM3X);
@@ -146,8 +153,9 @@ int resetGps(SFE_UBLOX_GPS *gps)
   gps->factoryReset();
   gps->setAutoPVT(true, true); //Tell the GPS to "send" each solution
   gps->setAutoHPPOSLLH(true); //Tell the GPS to "send" each high-accuracy solution, accuracy etc
+  gps->setAutoDOP(true, true); //Tell the GPS to "send" each DOP value
+  gps->setVal8(CFG_NMEA_HIGHPREC, 1, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR); // Ensure high precision mode for NMEA is on
   gps->setSerialRate(115200, COM_PORT_UART2); // Configure speed on bluetooth port
-  //gps->setNavigationFrequency(1);
   gps->saveConfiguration(); //Save the current settings to flash and BBR
   initSettingsMenu(gps);
 }
@@ -269,13 +277,42 @@ int processMenu(Menu *currentMenu, SFE_UBLOX_GPS *gps)
         currentMenu->refresh();
       }
     }
+    else if(result == NMEAMENUID + 3) // NMEA high precision
+    {      
+      auto item = currentMenu->selectedMenuItem();
+      bool isOn = item->getValue() == "On";
+      if(gps->setVal8(CFG_NMEA_HIGHPREC, isOn ? 0 : 1, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR))
+      {
+        item->setValue(isOn ? "Off" : "On");
+        currentMenu->refresh();
+      }
+    }
+    else if(result == NMEAMENUID + 4) // NMEA Compat
+    {
+      auto item = currentMenu->selectedMenuItem();
+      bool isOn = item->getValue() == "On";
+      if(gps->setVal8(CFG_NMEA_COMPAT, isOn ? 0 : 1, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR))
+      {
+        item->setValue(isOn ? "Off" : "On");
+        currentMenu->refresh();
+      }
+    }
+    else if(result == NMEAMENUID + 5) // NMEA max 82 chars
+    {
+      auto item = currentMenu->selectedMenuItem();
+      bool isOn = item->getValue() == "On";
+      if(gps->setVal8(CFG_NMEA_LIMIT82, isOn ? 0 : 1, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR))
+      {
+        item->setValue(isOn ? "Off" : "On");
+        currentMenu->refresh();
+      }
+    }
     else if(result == NMEAMSGMENUID) // NMEA message toggles
     {
       auto item = currentMenu->selectedMenuItem();
-      auto title = item->getTitle();
+      //auto title = item->getTitle();
       uint32_t messageid = item->getTag();
       bool enabled =  (item->getValue() == "Enabled");
-      //uint8_t id = result - NMEAMSGMENUID;
       bool isok = gps->setVal8(messageid, enabled ? 0 : 1, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR);
       if(isok)
       {

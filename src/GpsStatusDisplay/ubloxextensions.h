@@ -15,6 +15,10 @@
 #define CFG_UART2OUTPROT_NMEA 0x10760002 // Flag to indicate if NMEA should be an outputprotocol on UART2
 #define CFG_UART2OUTPROT_RTCM3X 0x10760004 // Flag to indicate if RTCM3X should be an outputprotocol on UART2
 
+#define CFG_NMEA_HIGHPREC 0x10930006 // Enable high precision mode -- This flag cannot be set in conjunction with either CFG-NMEA-COMPAT or CFG-NMEA-LIMIT82 mode.
+#define CFG_NMEA_COMPAT 0x10930003   // NMEA Compat mode
+#define CFG_NMEA_LIMIT82 0x10930005  // Enable strict limit to 82 characters maximum NMEA message length
+
 uint8_t customPayload[MAX_PAYLOAD_SIZE]; // This array holds the payload data bytes
 ubxPacket customCfg = {0, 0, 0, 0, 0, customPayload, 0, 0, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED};
 struct minfoStructure // Structure to hold the module info (uses 341 bytes of RAM)
