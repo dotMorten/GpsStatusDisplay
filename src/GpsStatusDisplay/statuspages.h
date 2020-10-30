@@ -9,24 +9,24 @@ bool privacy = false; // set to true to limit location precision for privacy (go
 
 
 
-void writeDop(float dop, uint8_t row)
+void writeDop(float dop, uint8_t y)
 {
    if(isnan(dop))
-     writepair("", "---", row);
+     drawString(0, y,"---",true);
    else {
     if(dop < 7)
       ucg.setColor(0, 255, 0);  
     else
       ucg.setColor(255, 0, 0);  
-    writepair("", String(dop), row);
+    drawString(0, y, String(dop), true);
   }
 }
 
 void drawPage_ErrorInfo(bool newPage)
 {    
+  auto fontHeight = 14;
   if(newPage)
   {
-    auto fontHeight = 14;
     ucg.setFont(ucg_font_helvR08_hr);
     ucg.setColor(255, 255, 0);
     drawString(0, 3*fontHeight, "Error:");
@@ -45,16 +45,16 @@ void drawPage_ErrorInfo(bool newPage)
   }
   drawStringCenter(getLineHeight() * 2, ("  " + mode() + "  ").c_str());
   if(isnan(horizontalError()))
-     writepair("", "---", 4);
+     drawString(0, 4 * fontHeight,"---",true);
   else
-     writepair("", String(horizontalError(), 3) + "m", 4);
+     drawString(0, 4 * fontHeight,String(horizontalError(), 3) + "m",true);
   if(isnan(verticalError()))
-     writepair("", "---", 5);
+     drawString(0, 5 * fontHeight,"---",true);
   else
-     writepair("", String(verticalError(), 3) + "m", 5);
-  writeDop(hdop(), 7);
-  writeDop(vdop(), 8);
-  writeDop(pdop(), 9);
+     drawString(0, 5 * fontHeight, String(verticalError(), 3) + "m",true);
+  writeDop(hdop(), 7 * fontHeight);
+  writeDop(vdop(), 8 * fontHeight);
+  writeDop(pdop(), 9 * fontHeight);
 }
 float lastCourse;
 void drawPage_NavigationInfo(bool newPage)

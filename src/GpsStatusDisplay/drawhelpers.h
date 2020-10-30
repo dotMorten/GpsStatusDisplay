@@ -9,17 +9,8 @@ int8_t getLineHeight()
 }
 void drawString(int x, int y, const char* text, bool rightAlign)
 {
-  auto ascent = ucg.getFontAscent();
-  auto descent = ucg.getFontDescent();
-  int width = 0;
-  if(rightAlign)
-   text = ("   " + String(text)).c_str();
-  //if(rightAlign)
-  //   width = ucg.getStrWidth("   " + text);
-  //else 
-  width = ucg.getStrWidth(text);
-  if(rightAlign)
-    ucg.setPrintPos(x - width,y);
+  if(rightAlign) 
+    ucg.setPrintPos(128 - x - ucg.getStrWidth(text),y);
   else
     ucg.setPrintPos(x,y);
   ucg.print(text);
