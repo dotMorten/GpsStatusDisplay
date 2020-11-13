@@ -40,7 +40,7 @@ For antenna you can pretty much use any GPS antenna rated for multi-band L1 and 
 
 ### Accuracy
 
-With an RTCM Correction source such as an NTRIP service, you can get down to around 10mm accuracy. As an example here's the point plot of 1000 thousand measurements in RTK mode with an RTCM base station ~7.7 km away.
+With an RTCM Correction source such as an NTRIP service, you can get down to around 10mm accuracy. As an example here's the point plot of 1000 measurements in RTK mode with an RTCM base station ~7.7 km away.
 
 ![image](https://user-images.githubusercontent.com/1378165/97666691-68e28380-1a3b-11eb-9e9c-0af0f7178090.png)
 
