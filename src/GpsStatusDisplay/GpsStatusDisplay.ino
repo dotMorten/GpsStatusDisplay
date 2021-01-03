@@ -131,13 +131,35 @@ const int buttonPin = 10;
 unsigned long lastButtonPressTime;
 //MenuItem menu;
 
+bool hasNewData = false;
+void onPVTDataChanged()
+{
+  if(ledstate)
+    digitalWrite(LED_BUILTIN, HIGH);
+  else
+    digitalWrite(LED_BUILTIN, LOW);
+  ledstate = !ledstate;
+
+  auto pvt = gps.packetUBXNAVPVTcopy;
+  onPVTDataChanged_(pvt);
+  hasNewData = true;
+}
+void OnHPPOSLLHChanged()
+{
+  auto hppos = gps.packetUBXNAVHPPOSLLHcopy;
+  OnHPPOSLLHChanged_(hppos);
+  hasNewData = true;
+}
+void OnDOPChanged()
+{
+  auto dop = gps.packetUBXNAVDOPcopy;
+  OnDOPChanged_(dop);
+  hasNewData = true;
+}
 void configureGps()
 {
   Wire.setClock(400000); //Increase I2C clock speed to 400kHz
   gps.setI2COutput(COM_TYPE_UBX); //Sets I2C to communicate with just the UBX protocol
-  gps.setAutoPVT(true, true); //Tell the GPS to "send" each solution
-  gps.setAutoHPPOSLLH(true, true); //Tell the GPS to "send" each high-accuracy solution, accuracy etc
-  gps.setAutoDOP(true, true); //Tell the GPS to "send" each DOP value     
   // Ensure UART2 bluetooth is configured correctly: 115200 baud, 1 stopbit, 8 databits, parity none(0)
   gps.setVal32(UBLOX_CFG_UART2_BAUDRATE, 115200, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR);
   gps.setVal8(UBLOX_CFG_UART2_STOPBITS, 1, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR);
@@ -145,12 +167,15 @@ void configureGps()
   gps.setVal8(UBLOX_CFG_UART2_PARITY, 0, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR);
 
   //gps.enableDebugging(Serial);
+  gps.setAutoPVTcallback(onPVTDataChanged);
+  gps.setAutoHPPOSLLHcallback(OnHPPOSLLHChanged);
+  gps.setAutoDOPcallback(OnDOPChanged);
 }
 
 void setup()
 {
   Serial.begin(115200);
-  //while (!Serial); //Wait for user to open terminal
+  // while (!Serial); //Wait for user to open terminal
   Serial.println("App start");
   lastButtonPressTime = millis();
   Wire.begin();   
@@ -182,23 +207,18 @@ void setup()
   menu->setDisplay(&ucg);
   digitalWrite(LED_BUILTIN, HIGH);
 }
+
 int buttonState = KEY_NONE;
 void loop()
 {
-  bool hasNewData = false;
   bool requireFullRedraw = false;
+  
   if(!gpsConnectionError)
-    hasNewData = readData(&gps);
+    gps.checkUblox(); // Check for the arrival of new data and process it.
+    gps.checkCallbacks(); // Check if any callbacks are waiting to be processed. 
   // Flash LED on each new data
-  if(hasNewData)
+  if(!hasNewData)
   {
-    if(ledstate)
-     digitalWrite(LED_BUILTIN, HIGH);
-    else
-     digitalWrite(LED_BUILTIN, LOW);
-    ledstate = !ledstate;
-  }
-  else {
     delay(1);
   }
   // Process UI
@@ -260,4 +280,5 @@ void loop()
   if (newButtonState != buttonState)
       lastButtonPressTime = t; //reset button press inactivity timer
   buttonState = newButtonState;
+  hasNewData = false;
 }
