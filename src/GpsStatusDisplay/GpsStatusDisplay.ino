@@ -101,21 +101,22 @@ void drawStatusBar(bool newPage)
   ucg.print(m);
 
   // Horizontal error
+  String str = "      ";
   auto err = horizontalError();
-  int decimals = 1;
-  if(err < .02)
-    decimals = 3;
-  else if(err < .2)
-    decimals = 2;
-  else if(err < 2)
-    decimals = 1;
-  auto str = (" " + String(err, decimals) + "m  ").c_str();
-  if(isnan(err))
-    str = "      ";
-  auto width = ucg.getStrWidth(str);
+  if(!isnan(err)) {
+    int decimals = 1;
+    if(err < .02)
+      decimals = 3;
+    else if(err < .2)
+      decimals = 2;
+    else if(err < 2)
+      decimals = 1;
+    str = " " + String(err, decimals) + "m  ";
+  }
+  auto width = ucg.getStrWidth(str.c_str());
   ucg.setColor(255, 255, 0);
   ucg.setPrintPos(64-width/2+1,8); 
-  ucg.print(str);
+  ucg.print(str.c_str());
   if(!isnan(err))
     drawBitmap(64-width/2-3, 1, 5, 7, plusminus, 255, 255, 0);
 
@@ -137,8 +138,12 @@ void configureGps()
   gps.setAutoPVT(true, true); //Tell the GPS to "send" each solution
   gps.setAutoHPPOSLLH(true, true); //Tell the GPS to "send" each high-accuracy solution, accuracy etc
   gps.setAutoDOP(true, true); //Tell the GPS to "send" each DOP value     
-  gps.setSerialRate(115200, COM_PORT_UART2); // Configure speed on bluetooth port
-  gps.saveConfiguration(); //Save the current settings to flash and BBR
+  // Ensure UART2 bluetooth is configured correctly: 115200 baud, 1 stopbit, 8 databits, parity none(0)
+  gps.setVal32(UBLOX_CFG_UART2_BAUDRATE, 115200, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR);
+  gps.setVal8(UBLOX_CFG_UART2_STOPBITS, 1, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR);
+  gps.setVal8(UBLOX_CFG_UART2_DATABITS, 8, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR);
+  gps.setVal8(UBLOX_CFG_UART2_PARITY, 0, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR);
+
   //gps.enableDebugging(Serial);
 }
 

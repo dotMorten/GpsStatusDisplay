@@ -118,6 +118,9 @@ int initSettingsMenu(SFE_UBLOX_GPS *gps)
     connectionsMenuItems[0]->setValue("NMEA");
   else if(rtcmOn)
     connectionsMenuItems[0]->setValue("RTCM");
+  else
+    connectionsMenuItems[0]->setValue("Off");
+      
     
   nmeaOn = gps->getVal8(CFG_UART2OUTPROT_NMEA);
   rtcmOn = gps->getVal8(CFG_UART2OUTPROT_RTCM3X);
@@ -127,7 +130,9 @@ int initSettingsMenu(SFE_UBLOX_GPS *gps)
     connectionsMenuItems[1]->setValue("NMEA");
   else if(rtcmOn)
     connectionsMenuItems[1]->setValue("RTCM");
-
+  else
+    connectionsMenuItems[1]->setValue("Off");
+  
 /*
   int menuCount = 4;
   if(getModuleInfo(gps, 1100))
@@ -189,11 +194,11 @@ int processMenu(Menu *currentMenu, SFE_UBLOX_GPS *gps)
       bool rtcmOn = false;
       if(item->getValue() == "NMEA") {
         rtcmOn=true;
+      }     
+      else if(item->getValue() == "RTCM") {
+        rtcmOn=false;
+        nmeaOn=false;
       }
-      /*else if(item->getValue() == "RTCM") {
-        rtcmOn=true;
-        nmeaOn=true;
-      }*/
       else {
         nmeaOn = true;
       }    
@@ -205,6 +210,8 @@ int processMenu(Menu *currentMenu, SFE_UBLOX_GPS *gps)
         connectionsMenuItems[0]->setValue("NMEA");
       else if(rtcmOn)
         connectionsMenuItems[0]->setValue("RTCM");
+      else if(!nmeaOn && !rtcmOn)
+        connectionsMenuItems[1]->setValue("Off");
       currentMenu->refresh();
     }
     else if(result == CONNECTIONSMENUID + 2) // Bluetooth Output
@@ -215,10 +222,10 @@ int processMenu(Menu *currentMenu, SFE_UBLOX_GPS *gps)
       if(item->getValue() == "NMEA") {
         rtcmOn=true;
       }
-      /*else if(item->getValue() == "RTCM") {
-        rtcmOn=true;
-        nmeaOn=true;
-      }*/
+      else if(item->getValue() == "RTCM") {
+        rtcmOn=false;
+        nmeaOn=false;
+      }
       else {
         nmeaOn = true;
       }    
@@ -230,6 +237,8 @@ int processMenu(Menu *currentMenu, SFE_UBLOX_GPS *gps)
         connectionsMenuItems[1]->setValue("NMEA");
       else if(rtcmOn)
         connectionsMenuItems[1]->setValue("RTCM");
+      else if(!nmeaOn && !rtcmOn)
+        connectionsMenuItems[1]->setValue("Off");
       currentMenu->refresh();
     }
     else if(result == GNSSMENUID + 6) // Navigation rate

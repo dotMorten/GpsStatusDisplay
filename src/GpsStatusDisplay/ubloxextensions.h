@@ -19,6 +19,11 @@
 #define CFG_NMEA_COMPAT 0x10930003   // NMEA Compat mode
 #define CFG_NMEA_LIMIT82 0x10930005  // Enable strict limit to 82 characters maximum NMEA message length
 
+
+const uint32_t UBLOX_CFG_UART2_STOPBITS = 0x20530002;
+const uint32_t UBLOX_CFG_UART2_DATABITS = 0x20530003;
+const uint32_t UBLOX_CFG_UART2_PARITY = 0x20530004;
+
 uint8_t customPayload[MAX_PAYLOAD_SIZE]; // This array holds the payload data bytes
 ubxPacket customCfg = {0, 0, 0, 0, 0, customPayload, 0, 0, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED};
 struct minfoStructure // Structure to hold the module info (uses 341 bytes of RAM)

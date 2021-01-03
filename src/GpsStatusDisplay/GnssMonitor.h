@@ -47,7 +47,7 @@ bool readData(SFE_UBLOX_GPS *gps)
     }
     else 
       mLonIndicator = 'E';
-    mGpstime = String(gps->getHour()) + ":" + String(gps->getMinute())+ ":" + String(gps->getSecond());
+    mGpstime = String(gps->getHour()) + (gps->getMinute() < 10 ? ":0" : ":") + String(gps->getMinute())+ (gps->getSecond() < 10 ? ":0" : ":") + String(gps->getSecond());
     auto sol = gps->getCarrierSolutionType();
     mFixType = gps->getFixType();
     bool isValid = gps->getGnssFixOk();
