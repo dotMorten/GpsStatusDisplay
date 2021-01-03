@@ -9,7 +9,8 @@
 	https://www.sparkfun.com/products/15193
 	https://www.sparkfun.com/products/15210
 
-	Written by Nathan Seidle @ SparkFun Electronics, September 6th, 2018
+	Original version by Nathan Seidle @ SparkFun Electronics, September 6th, 2018
+	v2.0 rework by Paul Clark @ SparkFun Electronics, December 31st, 2020
 
 	This library handles configuring and handling the responses
 	from a u-blox GPS module. Works with most modules from u-blox including
@@ -18,7 +19,7 @@
 	https://github.com/sparkfun/SparkFun_Ublox_Arduino_Library
 
 	Development environment specifics:
-	Arduino IDE 1.8.5
+	Arduino IDE 1.8.13
 
 	SparkFun code, firmware, and software is released under the MIT License(http://opensource.org/licenses/MIT).
 	The MIT License (MIT)
@@ -51,25 +52,13 @@
 #include <Wire.h>
 
 #include "u-blox_config_keys.h"
+#include "u-blox_structs.h"
 
-// Define Serial for SparkFun SAMD based boards.
-// Boards like the RedBoard Turbo use SerialUSB (not Serial).
-// But other boards like the SAMD51 Thing Plus use Serial (not SerialUSB).
-// The next nine lines let the code compile cleanly on as many SAMD boards as possible.
-#if defined(ARDUINO_ARCH_SAMD)			// Is this a SAMD board?
-#if defined(USB_VID)					// Is the USB Vendor ID defined?
-#if (USB_VID == 0x1B4F)					// Is this a SparkFun board?
-#if !defined(ARDUINO_SAMD51_THING_PLUS) // If it is not a SAMD51 Thing Plus
-#define Serial SerialUSB				// Define Serial as SerialUSB
-#endif
-#endif
-#endif
-#endif
 //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
-//Define a digital pin to aid checksum failure capture and analysis
+//Define a digital pin to aid debugging
 //Leave set to -1 if not needed
-const int checksumFailurePin = -1;
+const int debugPin = -1;
 
 // Global Status Returns
 typedef enum
@@ -101,11 +90,13 @@ typedef enum
 
 // Identify which packet buffer is in use:
 // packetCfg (or a custom packet), packetAck or packetBuf
+// packetAuto is used to store expected "automatic" messages
 typedef enum
 {
 	SFE_UBLOX_PACKET_PACKETCFG,
 	SFE_UBLOX_PACKET_PACKETACK,
-	SFE_UBLOX_PACKET_PACKETBUF
+	SFE_UBLOX_PACKET_PACKETBUF,
+	SFE_UBLOX_PACKET_PACKETAUTO
 } sfe_ublox_packet_buffer_e;
 
 //Registers
@@ -129,14 +120,19 @@ const uint8_t UBX_CLASS_SEC = 0x27;	 //Security Feature Messages
 const uint8_t UBX_CLASS_HNR = 0x28;	 //(NEO-M8P ONLY!!!) High Rate Navigation Results Messages: High rate time, position speed, heading
 const uint8_t UBX_CLASS_NMEA = 0xF0; //NMEA Strings: standard NMEA strings
 
+//Class: CFG
 //The following are used for configuration. Descriptions are from the ZED-F9P Interface Description pg 33-34 and NEO-M9N Interface Description pg 47-48
 const uint8_t UBX_CFG_ANT = 0x13;		//Antenna Control Settings. Used to configure the antenna control settings
 const uint8_t UBX_CFG_BATCH = 0x93;		//Get/set data batching configuration.
 const uint8_t UBX_CFG_CFG = 0x09;		//Clear, Save, and Load Configurations. Used to save current configuration
 const uint8_t UBX_CFG_DAT = 0x06;		//Set User-defined Datum or The currently defined Datum
 const uint8_t UBX_CFG_DGNSS = 0x70;		//DGNSS configuration
+const uint8_t UBX_CFG_ESFALG = 0x56;		//ESF alignment
+const uint8_t UBX_CFG_ESFA = 0x4C;		//ESF accelerometer
+const uint8_t UBX_CFG_ESFG = 0x4D;		//ESF gyro
 const uint8_t UBX_CFG_GEOFENCE = 0x69;	//Geofencing configuration. Used to configure a geofence
 const uint8_t UBX_CFG_GNSS = 0x3E;		//GNSS system configuration
+const uint8_t UBX_CFG_HNR = 0x5C;		//High Navigation Rate
 const uint8_t UBX_CFG_INF = 0x02;		//Depending on packet length, either: poll configuration for one protocol, or information message configuration
 const uint8_t UBX_CFG_ITFM = 0x39;		//Jamming/Interference Monitor configuration
 const uint8_t UBX_CFG_LOGFILTER = 0x47; //Data Logger Configuration
@@ -161,6 +157,7 @@ const uint8_t UBX_CFG_VALDEL = 0x8C;	//Used for config of higher version u-blox 
 const uint8_t UBX_CFG_VALGET = 0x8B;	//Used for config of higher version u-blox modules (ie protocol v27 and above). Configuration Items
 const uint8_t UBX_CFG_VALSET = 0x8A;	//Used for config of higher version u-blox modules (ie protocol v27 and above). Sets values corresponding to provided key-value pairs/ provided key-value pairs within a transaction.
 
+//Class: NMEA
 //The following are used to enable NMEA messages. Descriptions come from the NMEA messages overview in the ZED-F9P Interface Description
 const uint8_t UBX_NMEA_MSB = 0xF0;	//All NMEA enable commands have 0xF0 as MSB
 const uint8_t UBX_NMEA_DTM = 0x0A;	//GxDTM (datum reference)
@@ -193,6 +190,13 @@ const uint8_t UBX_NMEA_MAINTALKERID_GB = 0x05;			  //main talker ID is BeiDou
 const uint8_t UBX_NMEA_GSVTALKERID_GNSS = 0x00;			  //GNSS specific Talker ID (as defined by NMEA)
 const uint8_t UBX_NMEA_GSVTALKERID_MAIN = 0x01;			  //use the main Talker ID
 
+//Class: HNR
+//The following are used to configure the HNR message rates
+const uint8_t UBX_HNR_ATT = 0x01;			  //HNR Attitude
+const uint8_t UBX_HNR_INS = 0x02;			  //HNR Vehicle Dynamics
+const uint8_t UBX_HNR_PVT = 0x00;			  //HNR PVT
+
+//Class: INF
 //The following are used to configure INF UBX messages (information messages).  Descriptions from UBX messages overview (ZED_F9P Interface Description Document page 34)
 const uint8_t UBX_INF_CLASS = 0x04;	  //All INF messages have 0x04 as the class
 const uint8_t UBX_INF_DEBUG = 0x04;	  //ASCII output with debug contents
@@ -201,6 +205,7 @@ const uint8_t UBX_INF_NOTICE = 0x02;  //ASCII output with informational contents
 const uint8_t UBX_INF_TEST = 0x03;	  //ASCII output with test contents
 const uint8_t UBX_INF_WARNING = 0x01; //ASCII output with warning contents
 
+//Class: LOG
 //The following are used to configure LOG UBX messages (loggings messages).  Descriptions from UBX messages overview (ZED_F9P Interface Description Document page 34)
 const uint8_t UBX_LOG_CREATE = 0x07;		   //Create Log File
 const uint8_t UBX_LOG_ERASE = 0x03;			   //Erase Logged Data
@@ -212,6 +217,7 @@ const uint8_t UBX_LOG_RETRIEVESTRING = 0x0D;   //Byte string log entry
 const uint8_t UBX_LOG_RETRIEVE = 0x09;		   //Request log data
 const uint8_t UBX_LOG_STRING = 0x04;		   //Store arbitrary string on on-board flash
 
+//Class: MGA
 //The following are used to configure MGA UBX messages (Multiple GNSS Assistance Messages).  Descriptions from UBX messages overview (ZED_F9P Interface Description Document page 34)
 const uint8_t UBX_MGA_ACK_DATA0 = 0x60;		 //Multiple GNSS Acknowledge message
 const uint8_t UBX_MGA_BDS_EPH = 0x03;		 //BDS Ephemeris Assistance
@@ -243,6 +249,7 @@ const uint8_t UBX_MGA_QZSS_EPH = 0x05;		 //QZSS Ephemeris Assistance
 const uint8_t UBX_MGA_QZSS_ALM = 0x05;		 //QZSS Almanac Assistance
 const uint8_t UBX_MGA_QZAA_HEALTH = 0x05;	 //QZSS Health Assistance
 
+//Class: MON
 //The following are used to configure the MON UBX messages (monitoring messages). Descriptions from UBX messages overview (ZED_F9P Interface Description Document page 35)
 const uint8_t UBX_MON_COMMS = 0x36; //Comm port information
 const uint8_t UBX_MON_GNSS = 0x28;	//Information message major GNSS selection
@@ -258,6 +265,7 @@ const uint8_t UBX_MON_RXR = 0x21;	//Receiver Status Information
 const uint8_t UBX_MON_TXBUF = 0x08; //Transmitter Buffer Status. Used for query tx buffer size/state.
 const uint8_t UBX_MON_VER = 0x04;	//Receiver/Software Version. Used for obtaining Protocol Version.
 
+//Class: NAV
 //The following are used to configure the NAV UBX messages (navigation results messages). Descriptions from UBX messages overview (ZED_F9P Interface Description Document page 35-36)
 const uint8_t UBX_NAV_ATT = 0x05;		//Vehicle "Attitude" Solution
 const uint8_t UBX_NAV_CLOCK = 0x22;		//Clock Solution
@@ -286,6 +294,7 @@ const uint8_t UBX_NAV_TIMEUTC = 0x21;	//UTC Time Solution
 const uint8_t UBX_NAV_VELECEF = 0x11;	//Velocity Solution in ECEF
 const uint8_t UBX_NAV_VELNED = 0x12;	//Velocity Solution in NED
 
+//Class: RXM
 //The following are used to configure the RXM UBX messages (receiver manager messages). Descriptions from UBX messages overview (ZED_F9P Interface Description Document page 36)
 const uint8_t UBX_RXM_MEASX = 0x14; //Satellite Measurements for RRLP
 const uint8_t UBX_RXM_PMREQ = 0x41; //Requests a Power Management task (two differenent packet sizes)
@@ -294,14 +303,17 @@ const uint8_t UBX_RXM_RLM = 0x59;	//Galileo SAR Short-RLM report (two different 
 const uint8_t UBX_RXM_RTCM = 0x32;	//RTCM input status
 const uint8_t UBX_RXM_SFRBX = 0x13; //Boradcast Navigation Data Subframe
 
+//Class: SEC
 //The following are used to configure the SEC UBX messages (security feature messages). Descriptions from UBX messages overview (ZED_F9P Interface Description Document page 36)
 const uint8_t UBX_SEC_UNIQID = 0x03; //Unique chip ID
 
+//Class: TIM
 //The following are used to configure the TIM UBX messages (timing messages). Descriptions from UBX messages overview (ZED_F9P Interface Description Document page 36)
 const uint8_t UBX_TIM_TM2 = 0x03;  //Time mark data
 const uint8_t UBX_TIM_TP = 0x01;   //Time Pulse Timedata
 const uint8_t UBX_TIM_VRFY = 0x06; //Sourced Time Verification
 
+//Class: UPD
 //The following are used to configure the UPD UBX messages (firmware update messages). Descriptions from UBX messages overview (ZED-F9P Interface Description Document page 36)
 const uint8_t UBX_UPD_SOS = 0x14; //Poll Backup Fil Restore Status, Create Backup File in Flash, Clear Backup File in Flash, Backup File Creation Acknowledge, System Restored from Backup
 
@@ -320,15 +332,18 @@ const uint8_t UBX_RTCM_1230 = 0xE6;	  //GLONASS code-phase biases, set to once e
 const uint8_t UBX_RTCM_4072_0 = 0xFE; //Reference station PVT (ublox proprietary RTCM message)
 const uint8_t UBX_RTCM_4072_1 = 0xFD; //Additional reference station information (ublox proprietary RTCM message)
 
+// Class: ACK
 const uint8_t UBX_ACK_NACK = 0x00;
 const uint8_t UBX_ACK_ACK = 0x01;
 const uint8_t UBX_ACK_NONE = 0x02; //Not a real value
 
+//Class: ESF
 // The following constants are used to get External Sensor Measurements and Status
 // Information.
 const uint8_t UBX_ESF_MEAS = 0x02;
 const uint8_t UBX_ESF_RAW = 0x03;
 const uint8_t UBX_ESF_STATUS = 0x10;
+const uint8_t UBX_ESF_ALG = 0x14;
 const uint8_t UBX_ESF_INS = 0x15; //36 bytes
 
 const uint8_t SVIN_MODE_DISABLE = 0x00;
@@ -379,26 +394,25 @@ enum dynModel // Possible values for the dynamic platform model, which provide m
 };
 
 #ifndef MAX_PAYLOAD_SIZE
-
+// v2.0: keep this for backwards-compatibility, but this is largely superseded by setPacketCfgPayloadSize
 #define MAX_PAYLOAD_SIZE 256 //We need ~220 bytes for getProtocolVersion on most ublox modules
 //#define MAX_PAYLOAD_SIZE 768 //Worst case: UBX_CFG_VALSET packet with 64 keyIDs each with 64 bit values
-
 #endif
 
 //-=-=-=-=- UBX binary specific variables
-typedef struct
+struct ubxPacket
 {
 	uint8_t cls;
 	uint8_t id;
-	uint16_t len;		   //Length of the payload. Does not include cls, id, or checksum bytes
-	uint16_t counter;	   //Keeps track of number of overall bytes received. Some responses are larger than 255 bytes.
+	uint16_t len; //Length of the payload. Does not include cls, id, or checksum bytes
+	uint16_t counter; //Keeps track of number of overall bytes received. Some responses are larger than 255 bytes.
 	uint16_t startingSpot; //The counter value needed to go past before we begin recording into payload array
-	uint8_t *payload;
+	uint8_t *payload; // We will allocate RAM for the payload if/when needed.
 	uint8_t checksumA; //Given to us from module. Checked against the rolling calculated A/B checksums.
 	uint8_t checksumB;
 	sfe_ublox_packet_validity_e valid;			 //Goes from NOT_DEFINED to VALID or NOT_VALID when checksum is checked
 	sfe_ublox_packet_validity_e classAndIDmatch; // Goes from NOT_DEFINED to VALID or NOT_VALID when the Class and ID match the requestedClass and requestedID
-} ubxPacket;
+};
 
 // Struct to hold the results returned by getGeofenceState (returned by UBX-NAV-GEOFENCE)
 typedef struct
@@ -416,7 +430,15 @@ typedef struct
 	int32_t lats[4];   // Latitudes of geofences (in degrees * 10^-7)
 	int32_t longs[4];  // Longitudes of geofences (in degrees * 10^-7)
 	uint32_t rads[4];  // Radii of geofences (in m * 10^-2)
-} geofenceParams;
+} geofenceParams_t;
+
+// Struct to hold the module software version
+typedef struct
+{
+	uint8_t versionLow;		 //Loaded from getProtocolVersion().
+	uint8_t versionHigh;
+	bool moduleQueried;
+} moduleSWVersion_t;
 
 class SFE_UBLOX_GPS
 {
@@ -430,10 +452,15 @@ public:
 #define defaultMaxWait 1100
 #endif
 
+	//New in v2.0: allow the payload size for packetCfg to be changed
+	void setPacketCfgPayloadSize(size_t payloadSize); // Set packetCfgPayloadSize
+
 	//By default use the default I2C address, and use Wire port
 	boolean begin(TwoWire &wirePort = Wire, uint8_t deviceAddress = 0x42); //Returns true if module is detected
 	//serialPort needs to be perviously initialized to correct baud rate
 	boolean begin(Stream &serialPort); //Returns true if module is detected
+
+	void setI2CpollingWait(uint8_t newPollingWait_ms); // Allow the user to change the I2C polling wait if required
 
 	//Control the size of the internal I2C transaction amount
 	void setI2CTransactionSize(uint8_t bufferSize);
@@ -443,126 +470,109 @@ public:
 	uint8_t i2cTransactionSize = 32; //Default to ATmega328 limit
 
 	//Returns true if device answers on _gpsI2Caddress address or via Serial
-	//maxWait is only used for Serial
 	boolean isConnected(uint16_t maxWait = 1100);
+
+	// Enable debug messages using the chosen Serial port (Stream)
+	// Boards like the RedBoard Turbo use SerialUSB (not Serial).
+	// But other boards like the SAMD51 Thing Plus use Serial (not SerialUSB).
+	// These lines let the code compile cleanly on as many SAMD boards as possible.
+	#if defined(ARDUINO_ARCH_SAMD)	// Is this a SAMD board?
+	#if defined(USB_VID)						// Is the USB Vendor ID defined?
+	#if (USB_VID == 0x1B4F)					// Is this a SparkFun board?
+	#if !defined(ARDUINO_SAMD51_THING_PLUS) & !defined(ARDUINO_SAMD51_MICROMOD) // If it is not a SAMD51 Thing Plus or SAMD51 MicroMod
+	void enableDebugging(Stream &debugPort = SerialUSB, boolean printLimitedDebug = false); //Given a port to print to, enable debug messages. Default to all, not limited.
+	#else
+	void enableDebugging(Stream &debugPort = Serial, boolean printLimitedDebug = false); //Given a port to print to, enable debug messages. Default to all, not limited.
+	#endif
+	#else
+	void enableDebugging(Stream &debugPort = Serial, boolean printLimitedDebug = false); //Given a port to print to, enable debug messages. Default to all, not limited.
+	#endif
+	#else
+	void enableDebugging(Stream &debugPort = Serial, boolean printLimitedDebug = false); //Given a port to print to, enable debug messages. Default to all, not limited.
+	#endif
+	#else
+	void enableDebugging(Stream &debugPort = Serial, boolean printLimitedDebug = false); //Given a port to print to, enable debug messages. Default to all, not limited.
+	#endif
+
+	void disableDebugging(void); //Turn off debug statements
+	void debugPrint(char *message); //Safely print debug statements
+	void debugPrintln(char *message); //Safely print debug statements
+	const char *statusString(sfe_ublox_status_e stat); //Pretty print the return value
+
+	// Check for the arrival of new I2C/Serial data
+
+	void disableUBX7Fcheck(boolean disabled = true); // When logging RAWX data, we need to be able to disable the "7F" check in checkUbloxI2C
 
 	//Changed in V1.8.1: provides backward compatibility for the examples that call checkUblox directly
 	//Will default to using packetCfg to look for explicit autoPVT packets so they get processed correctly by processUBX
-	boolean checkUblox(uint8_t requestedClass = UBX_CLASS_NAV, uint8_t requestedID = UBX_NAV_PVT); //Checks module with user selected commType
+	boolean checkUblox(uint8_t requestedClass = 0, uint8_t requestedID = 0); //Checks module with user selected commType
 
 	boolean checkUbloxI2C(ubxPacket *incomingUBX, uint8_t requestedClass, uint8_t requestedID);	   //Method for I2C polling of data, passing any new bytes to process()
 	boolean checkUbloxSerial(ubxPacket *incomingUBX, uint8_t requestedClass, uint8_t requestedID); //Method for serial polling of data, passing any new bytes to process()
 
+	// Process the incoming data
+
 	void process(uint8_t incoming, ubxPacket *incomingUBX, uint8_t requestedClass, uint8_t requestedID);	//Processes NMEA and UBX binary sentences one byte at a time
-	void processUBX(uint8_t incoming, ubxPacket *incomingUBX, uint8_t requestedClass, uint8_t requestedID); //Given a character, file it away into the uxb packet structure
+	void processNMEA(char incoming) __attribute__((weak)); //Given a NMEA character, do something with it. User can overwrite if desired to use something like tinyGPS or MicroNMEA libraries
 	void processRTCMframe(uint8_t incoming);																//Monitor the incoming bytes for start and length bytes
 	void processRTCM(uint8_t incoming) __attribute__((weak));												//Given rtcm byte, do something with it. User can overwrite if desired to pipe bytes to radio, internet, etc.
-
+	void processUBX(uint8_t incoming, ubxPacket *incomingUBX, uint8_t requestedClass, uint8_t requestedID); //Given a character, file it away into the uxb packet structure
 	void processUBXpacket(ubxPacket *msg);				   //Once a packet has been received and validated, identify this packet's class/id and update internal flags
-	void processNMEA(char incoming) __attribute__((weak)); //Given a NMEA character, do something with it. User can overwrite if desired to use something like tinyGPS or MicroNMEA libraries
+
+	// Send I2C/Serial commands to the module
 
 	void calcChecksum(ubxPacket *msg);														   //Sets the checksumA and checksumB of a given messages
 	sfe_ublox_status_e sendCommand(ubxPacket *outgoingUBX, uint16_t maxWait = defaultMaxWait); //Given a packet and payload, send everything including CRC bytes, return true if we got a response
-	sfe_ublox_status_e sendI2cCommand(ubxPacket *outgoingUBX, uint16_t maxWait = 250);
+	sfe_ublox_status_e sendI2cCommand(ubxPacket *outgoingUBX, uint16_t maxWait = defaultMaxWait);
 	void sendSerialCommand(ubxPacket *outgoingUBX);
 
-	void printPacket(ubxPacket *packet); //Useful for debugging
+	void printPacket(ubxPacket *packet, boolean alwaysPrintPayload = false); //Useful for debugging
 
-	void factoryReset(); //Send factory reset sequence (i.e. load "default" configuration and perform hardReset)
-	void hardReset();	 //Perform a reset leading to a cold start (zero info start-up)
-
-	boolean setI2CAddress(uint8_t deviceAddress, uint16_t maxTime = 250);										 //Changes the I2C address of the u-blox module
-	void setSerialRate(uint32_t baudrate, uint8_t uartPort = COM_PORT_UART1, uint16_t maxTime = defaultMaxWait); //Changes the serial baud rate of the u-blox module, uartPort should be COM_PORT_UART1/2
-	void setNMEAOutputPort(Stream &nmeaOutputPort);																 //Sets the internal variable for the port to direct NMEA characters to
-
-	boolean setNavigationFrequency(uint8_t navFreq, uint16_t maxWait = defaultMaxWait);	 //Set the number of nav solutions sent per second
-	uint8_t getNavigationFrequency(uint16_t maxWait = defaultMaxWait);					 //Get the number of nav solutions sent per second currently being output by module
-	boolean saveConfiguration(uint16_t maxWait = defaultMaxWait);						 //Save current configuration to flash and BBR (battery backed RAM)
-	boolean factoryDefault(uint16_t maxWait = defaultMaxWait);							 //Reset module to factory defaults
-	boolean saveConfigSelective(uint32_t configMask, uint16_t maxWait = defaultMaxWait); //Save the selected configuration sub-sections to flash and BBR (battery backed RAM)
+	// After sending a message to teh module, wait for the expected response (data+ACK or just data)
 
 	sfe_ublox_status_e waitForACKResponse(ubxPacket *outgoingUBX, uint8_t requestedClass, uint8_t requestedID, uint16_t maxTime = defaultMaxWait);	 //Poll the module until a config packet and an ACK is received
 	sfe_ublox_status_e waitForNoACKResponse(ubxPacket *outgoingUBX, uint8_t requestedClass, uint8_t requestedID, uint16_t maxTime = defaultMaxWait); //Poll the module until a config packet is received
 
-// getPVT will only return data once in each navigation cycle. By default, that is once per second.
-// Therefore we should set getPVTmaxWait to slightly longer than that.
-// If you change the navigation frequency to (e.g.) 4Hz using setNavigationFrequency(4)
-// then you should use a shorter maxWait for getPVT. 300msec would be about right: getPVT(300)
-// The same is true for getHPPOSLLH.
-#define getPVTmaxWait 1100		// Default maxWait for getPVT and all functions which call it
-#define getHPPOSLLHmaxWait 1100 // Default maxWait for getHPPOSLLH and all functions which call it
-#define getDOPmaxWait 1100 // Default maxWait for getDOP and all functions which all it
+	// Check if any callbacks need to be called
+	void checkCallbacks(void);
 
-	boolean assumeAutoPVT(boolean enabled, boolean implicitUpdate = true);							//In case no config access to the GPS is possible and PVT is send cyclically already
-	boolean setAutoPVT(boolean enabled, uint16_t maxWait = defaultMaxWait);							//Enable/disable automatic PVT reports at the navigation frequency
-	boolean getPVT(uint16_t maxWait = getPVTmaxWait);												//Query module for latest group of datums and load global vars: lat, long, alt, speed, SIV, accuracies, etc. If autoPVT is disabled, performs an explicit poll and waits, if enabled does not block. Returns true if new PVT is available.
-	boolean setAutoPVT(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic PVT reports at the navigation frequency, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
-	boolean assumeAutoHPPOSLLH(boolean enabled, boolean implicitUpdate = true);							//In case no config access to the GPS is possible and HPPOSLLH is send cyclically already
-	boolean setAutoHPPOSLLH(boolean enabled, uint16_t maxWait = defaultMaxWait);							//Enable/disable automatic HPPOSLLH reports at the navigation frequency
-	boolean setAutoHPPOSLLH(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic HPPOSLLH reports at the navigation frequency, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
-	boolean getHPPOSLLH(uint16_t maxWait = getHPPOSLLHmaxWait);										//Query module for latest group of datums and load global vars: lat, long, alt, speed, SIV, accuracies, etc. If autoPVT is disabled, performs an explicit poll and waits, if enabled does not block. Returns true if new HPPOSLLH is available.
-  boolean assumeAutoDOP(boolean enabled, boolean implicitUpdate = true);              //In case no config access to the GPS is possible and DOP is send cyclically already
-  boolean setAutoDOP(boolean enabled, uint16_t maxWait = defaultMaxWait);              //Enable/disable automatic DOP reports at the navigation frequency
-  boolean setAutoDOP(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic DOP reports at the navigation frequency, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
-  boolean getDOP(uint16_t maxWait = getDOPmaxWait);                   //Query module for latest dilution of precision values and load global vars:. If autoDOP is disabled, performs an explicit poll and waits, if enabled does not block. Returns true if new DOP is available. 
-	void flushPVT();																				//Mark all the PVT data as read/stale. This is handy to get data alignment after CRC failure
-	void flushHPPOSLLH();																				//Mark all the PVT data as read/stale. This is handy to get data alignment after CRC failure
-  void flushDOP();                                       //Mark all the DOP data as read/stale. This is handy to get data alignment after CRC failure
+	// Push (e.g.) RTCM data directly to the module
+	// Warning: this function does not check that the data is valid. It is the user's responsibility to ensure the data is valid before pushing.
+	boolean pushRawData(uint8_t *dataBytes, size_t numDataBytes);
 
-  bool getGnssFixOk(uint16_t maxWait = getPVTmaxWait);          //Get whether we have a valid fix (i.e within DOP & accuracy masks)
-  bool getDiffSoln(uint16_t maxWait = getPVTmaxWait);           //Get whether differential corrections were applied
-	int32_t getLatitude(uint16_t maxWait = getPVTmaxWait);			  //Returns the current latitude in degrees * 10^-7. Auto selects between HighPrecision and Regular depending on ability of module.
-	int32_t getLongitude(uint16_t maxWait = getPVTmaxWait);			  //Returns the current longitude in degrees * 10-7. Auto selects between HighPrecision and Regular depending on ability of module.
-	int32_t getAltitude(uint16_t maxWait = getPVTmaxWait);			  //Returns the current altitude in mm above ellipsoid
-	int32_t getAltitudeMSL(uint16_t maxWait = getPVTmaxWait);		  //Returns the current altitude in mm above mean sea level
-	uint8_t getSIV(uint16_t maxWait = getPVTmaxWait);				  //Returns number of sats used in fix
-	uint8_t getFixType(uint16_t maxWait = getPVTmaxWait);			  //Returns the type of fix: 0=no, 3=3D, 4=GNSS+Deadreckoning
-	uint8_t getCarrierSolutionType(uint16_t maxWait = getPVTmaxWait); //Returns RTK solution: 0=no, 1=float solution, 2=fixed solution
-	int32_t getGroundSpeed(uint16_t maxWait = getPVTmaxWait);		  //Returns speed in mm/s
-	int32_t getHeading(uint16_t maxWait = getPVTmaxWait);			  //Returns heading in degrees * 10^-5
-	uint16_t getPDOP(uint16_t maxWait = getPVTmaxWait);				  //Returns positional dillution of precision * 10^-2 (dimensionless)
-	uint16_t getYear(uint16_t maxWait = getPVTmaxWait);
-	uint8_t getMonth(uint16_t maxWait = getPVTmaxWait);
-	uint8_t getDay(uint16_t maxWait = getPVTmaxWait);
-	uint8_t getHour(uint16_t maxWait = getPVTmaxWait);
-	uint8_t getMinute(uint16_t maxWait = getPVTmaxWait);
-	uint8_t getSecond(uint16_t maxWait = getPVTmaxWait);
-	uint16_t getMillisecond(uint16_t maxWait = getPVTmaxWait);
-	int32_t getNanosecond(uint16_t maxWait = getPVTmaxWait);
-	uint32_t getTimeOfWeek(uint16_t maxWait = getPVTmaxWait);
-	bool getDateValid(uint16_t maxWait = getPVTmaxWait);
-	bool getTimeValid(uint16_t maxWait = getPVTmaxWait);
+	// Support for data logging
+	void setFileBufferSize(uint16_t bufferSize); // Set the size of the file buffer. This must be called _before_ .begin.
+	uint16_t extractFileBufferData(uint8_t *destination, uint16_t numBytes); // Extract numBytes of data from the file buffer. Copy it to destination. It is the user's responsibility to ensure destination is large enough.
+	uint16_t fileBufferAvailable(void); // Returns the number of bytes available in file buffer which are waiting to be read
+	uint16_t getMaxFileBufferAvail(void); // Returns the maximum number of bytes which the file buffer has contained. Handy for checking the buffer is large enough to handle all the incoming data.
 
-	int32_t getHighResLatitude(uint16_t maxWait = getHPPOSLLHmaxWait);
-	int8_t getHighResLatitudeHp(uint16_t maxWait = getHPPOSLLHmaxWait);
-	int32_t getHighResLongitude(uint16_t maxWait = getHPPOSLLHmaxWait);
-	int8_t getHighResLongitudeHp(uint16_t maxWait = getHPPOSLLHmaxWait);
-	int32_t getElipsoid(uint16_t maxWait = getHPPOSLLHmaxWait);
-	int8_t getElipsoidHp(uint16_t maxWait = getHPPOSLLHmaxWait);
-	int32_t getMeanSeaLevel(uint16_t maxWait = getHPPOSLLHmaxWait);
-	int8_t getMeanSeaLevelHp(uint16_t maxWait = getHPPOSLLHmaxWait);
-	int32_t getGeoidSeparation(uint16_t maxWait = getHPPOSLLHmaxWait);
-	uint32_t getHorizontalAccuracy(uint16_t maxWait = getHPPOSLLHmaxWait);
-	uint32_t getVerticalAccuracy(uint16_t maxWait = getHPPOSLLHmaxWait);
-
-  uint16_t getGeometricDOP(uint16_t maxWait = getDOPmaxWait);
-  uint16_t getPositionDOP(uint16_t maxWait = getDOPmaxWait);
-  uint16_t getTimeDOP(uint16_t maxWait = getDOPmaxWait);
-  uint16_t getVerticalDOP(uint16_t maxWait = getDOPmaxWait);
-  uint16_t getHorizontalDOP(uint16_t maxWait = getDOPmaxWait);
-  uint16_t getNorthingDOP(uint16_t maxWait = getDOPmaxWait);
-  uint16_t getEastingDOP(uint16_t maxWait = getDOPmaxWait);
+	// Specific commands
 
 	//Port configurations
+	boolean getPortSettings(uint8_t portID, uint16_t maxWait = defaultMaxWait);					   //Returns the current protocol bits in the UBX-CFG-PRT command for a given port
 	boolean setPortOutput(uint8_t portID, uint8_t comSettings, uint16_t maxWait = defaultMaxWait); //Configure a given port to output UBX, NMEA, RTCM3 or a combination thereof
 	boolean setPortInput(uint8_t portID, uint8_t comSettings, uint16_t maxWait = defaultMaxWait);  //Configure a given port to input UBX, NMEA, RTCM3 or a combination thereof
-	boolean getPortSettings(uint8_t portID, uint16_t maxWait = defaultMaxWait);					   //Returns the current protocol bits in the UBX-CFG-PRT command for a given port
 
-	boolean setI2COutput(uint8_t comSettings, uint16_t maxWait = 250);				//Configure I2C port to output UBX, NMEA, RTCM3 or a combination thereof
+	boolean setI2CAddress(uint8_t deviceAddress, uint16_t maxTime = defaultMaxWait);										 //Changes the I2C address of the u-blox module
+	void setSerialRate(uint32_t baudrate, uint8_t uartPort = COM_PORT_UART1, uint16_t maxTime = defaultMaxWait); //Changes the serial baud rate of the u-blox module, uartPort should be COM_PORT_UART1/2
+
+	boolean setI2COutput(uint8_t comSettings, uint16_t maxWait = defaultMaxWait);				//Configure I2C port to output UBX, NMEA, RTCM3 or a combination thereof
 	boolean setUART1Output(uint8_t comSettings, uint16_t maxWait = defaultMaxWait); //Configure UART1 port to output UBX, NMEA, RTCM3 or a combination thereof
 	boolean setUART2Output(uint8_t comSettings, uint16_t maxWait = defaultMaxWait); //Configure UART2 port to output UBX, NMEA, RTCM3 or a combination thereof
-	boolean setUSBOutput(uint8_t comSettings, uint16_t maxWait = 250);				//Configure USB port to output UBX, NMEA, RTCM3 or a combination thereof
-	boolean setSPIOutput(uint8_t comSettings, uint16_t maxWait = 250);				//Configure SPI port to output UBX, NMEA, RTCM3 or a combination thereof
+	boolean setUSBOutput(uint8_t comSettings, uint16_t maxWait = defaultMaxWait);				//Configure USB port to output UBX, NMEA, RTCM3 or a combination thereof
+	boolean setSPIOutput(uint8_t comSettings, uint16_t maxWait = defaultMaxWait);				//Configure SPI port to output UBX, NMEA, RTCM3 or a combination thereof
+	void setNMEAOutputPort(Stream &nmeaOutputPort);																 //Sets the internal variable for the port to direct NMEA characters to
+
+	//Reset to defaults
+
+	void factoryReset(); //Send factory reset sequence (i.e. load "default" configuration and perform hardReset)
+	void hardReset();	 //Perform a reset leading to a cold start (zero info start-up)
+	boolean factoryDefault(uint16_t maxWait = defaultMaxWait);							 //Reset module to factory defaults
+
+	//Save configuration to BBR / Flash
+
+	boolean saveConfiguration(uint16_t maxWait = defaultMaxWait);						 //Save current configuration to flash and BBR (battery backed RAM)
+	boolean saveConfigSelective(uint32_t configMask, uint16_t maxWait = defaultMaxWait); //Save the selected configuration sub-sections to flash and BBR (battery backed RAM)
 
 	//Functions to turn on/off message types for a given port ID (see COM_PORT_I2C, etc above)
 	boolean configureMessage(uint8_t msgClass, uint8_t msgID, uint8_t portID, uint8_t sendRate, uint16_t maxWait = defaultMaxWait);
@@ -571,13 +581,52 @@ public:
 	boolean enableNMEAMessage(uint8_t msgID, uint8_t portID, uint8_t sendRate = 1, uint16_t maxWait = defaultMaxWait);
 	boolean disableNMEAMessage(uint8_t msgID, uint8_t portID, uint16_t maxWait = defaultMaxWait);
 	boolean enableRTCMmessage(uint8_t messageNumber, uint8_t portID, uint8_t sendRate, uint16_t maxWait = defaultMaxWait); //Given a message number turns on a message ID for output over given PortID
-	boolean disableRTCMmessage(uint8_t messageNumber, uint8_t portID, uint16_t maxWait = defaultMaxWait);				   //Turn off given RTCM message from a given port
+	boolean disableRTCMmessage(uint8_t messageNumber, uint8_t portID, uint16_t maxWait = defaultMaxWait); //Turn off given RTCM message from a given port
+
+	//Functions used for RTK and base station setup
+	//It is probably safe to assume that users of the RTK will be using I2C / Qwiic. So let's leave maxWait set to 250ms.
+	boolean getSurveyMode(uint16_t maxWait = 250); //Get the current TimeMode3 settings
+	boolean setSurveyMode(uint8_t mode, uint16_t observationTime, float requiredAccuracy, uint16_t maxWait = 250); //Control survey in mode
+	boolean enableSurveyMode(uint16_t observationTime, float requiredAccuracy, uint16_t maxWait = 250); //Begin Survey-In for NEO-M8P
+	boolean disableSurveyMode(uint16_t maxWait = 250); //Stop Survey-In mode
+	// Given coordinates, put receiver into static position. Set latlong to true to pass in lat/long values instead of ecef.
+	// For ECEF the units are: cm, 0.1mm, cm, 0.1mm, cm, 0.1mm
+	// For Lat/Lon/Alt the units are: degrees^-7, degrees^-9, degrees^-7, degrees^-9, cm, 0.1mm
+	bool setStaticPosition(int32_t ecefXOrLat, int8_t ecefXOrLatHP, int32_t ecefYOrLon, int8_t ecefYOrLonHP, int32_t ecefZOrAlt, int8_t ecefZOrAltHP, bool latLong = false, uint16_t maxWait = 250);
+	bool setStaticPosition(int32_t ecefXOrLat, int32_t ecefYOrLon, int32_t ecefZOrAlt, bool latLong = false, uint16_t maxWait = 250);
+
+	//Read the module's protocol version
+	uint8_t getProtocolVersionHigh(uint16_t maxWait = defaultMaxWait); //Returns the PROTVER XX.00 from UBX-MON-VER register
+	uint8_t getProtocolVersionLow(uint16_t maxWait = defaultMaxWait);	//Returns the PROTVER 00.XX from UBX-MON-VER register
+	boolean getProtocolVersion(uint16_t maxWait = defaultMaxWait);		//Queries module, loads low/high bytes
+	moduleSWVersion_t *moduleSWVersion = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+
+	//Support for geofences
+	boolean addGeofence(int32_t latitude, int32_t longitude, uint32_t radius, byte confidence = 0, byte pinPolarity = 0, byte pin = 0, uint16_t maxWait = defaultMaxWait); // Add a new geofence
+	boolean clearGeofences(uint16_t maxWait = defaultMaxWait); //Clears all geofences
+	boolean clearAntPIO(uint16_t maxWait = defaultMaxWait); //Clears the antenna control pin settings to release the PIOs
+	boolean getGeofenceState(geofenceState &currentGeofenceState, uint16_t maxWait = defaultMaxWait); //Returns the combined geofence state
+	// Storage for the geofence parameters. RAM is allocated for this if/when required.
+	geofenceParams_t *currentGeofenceParams = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+
+	//Power save / off
+	boolean powerSaveMode(bool power_save = true, uint16_t maxWait = defaultMaxWait);
+	uint8_t getPowerSaveMode(uint16_t maxWait = defaultMaxWait); // Returns 255 if the sendCommand fails
+	boolean powerOff(uint32_t durationInMs, uint16_t maxWait = defaultMaxWait);
+	boolean powerOffWithInterrupt(uint32_t durationInMs, uint32_t wakeupSources = VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0, boolean forceWhileUsb = true, uint16_t maxWait = 1100);
+
+	//Change the dynamic platform model using UBX-CFG-NAV5
+	boolean setDynamicModel(dynModel newDynamicModel = DYN_MODEL_PORTABLE, uint16_t maxWait = defaultMaxWait);
+	uint8_t getDynamicModel(uint16_t maxWait = defaultMaxWait); // Get the dynamic model - returns 255 if the sendCommand fails
+
+	//Reset the odometer
+	boolean resetOdometer(uint16_t maxWait = defaultMaxWait); // Reset the odometer
 
 	//General configuration (used only on protocol v27 and higher - ie, ZED-F9P)
+
 	//It is probably safe to assume that users of the ZED-F9P will be using I2C / Qwiic.
 	//If they are using Serial then the higher baud rate will also help. So let's leave maxWait set to 250ms.
 	uint32_t createKey(uint16_t group, uint16_t id, uint8_t size); //Form 32-bit key from group/id/size
-
 	sfe_ublox_status_e getVal(uint32_t keyID, uint8_t layer = VAL_LAYER_RAM, uint16_t maxWait = 250);					 //Load payload with response
 	uint8_t getVal8(uint32_t keyID, uint8_t layer = VAL_LAYER_RAM, uint16_t maxWait = 250);								 //Returns the value at a given key location
 	uint16_t getVal16(uint32_t keyID, uint8_t layer = VAL_LAYER_RAM, uint16_t maxWait = 250);							 //Returns the value at a given key location
@@ -589,9 +638,9 @@ public:
 	uint8_t setVal8(uint32_t keyID, uint8_t value, uint8_t layer = VAL_LAYER_ALL, uint16_t maxWait = 250);				 //Sets the 8-bit value at a given group/id/size location
 	uint8_t setVal16(uint32_t keyID, uint16_t value, uint8_t layer = VAL_LAYER_ALL, uint16_t maxWait = 250);			 //Sets the 16-bit value at a given group/id/size location
 	uint8_t setVal32(uint32_t keyID, uint32_t value, uint8_t layer = VAL_LAYER_ALL, uint16_t maxWait = 250);			 //Sets the 32-bit value at a given group/id/size location
-	uint8_t newCfgValset8(uint32_t keyID, uint8_t value, uint8_t layer = VAL_LAYER_BBR);								 //Define a new UBX-CFG-VALSET with the given KeyID and 8-bit value
-	uint8_t newCfgValset16(uint32_t keyID, uint16_t value, uint8_t layer = VAL_LAYER_BBR);								 //Define a new UBX-CFG-VALSET with the given KeyID and 16-bit value
-	uint8_t newCfgValset32(uint32_t keyID, uint32_t value, uint8_t layer = VAL_LAYER_BBR);								 //Define a new UBX-CFG-VALSET with the given KeyID and 32-bit value
+	uint8_t newCfgValset8(uint32_t keyID, uint8_t value, uint8_t layer = VAL_LAYER_ALL);								 //Define a new UBX-CFG-VALSET with the given KeyID and 8-bit value
+	uint8_t newCfgValset16(uint32_t keyID, uint16_t value, uint8_t layer = VAL_LAYER_ALL);								 //Define a new UBX-CFG-VALSET with the given KeyID and 16-bit value
+	uint8_t newCfgValset32(uint32_t keyID, uint32_t value, uint8_t layer = VAL_LAYER_ALL);								 //Define a new UBX-CFG-VALSET with the given KeyID and 32-bit value
 	uint8_t addCfgValset8(uint32_t keyID, uint8_t value);																 //Add a new KeyID and 8-bit value to an existing UBX-CFG-VALSET ubxPacket
 	uint8_t addCfgValset16(uint32_t keyID, uint16_t value);																 //Add a new KeyID and 16-bit value to an existing UBX-CFG-VALSET ubxPacket
 	uint8_t addCfgValset32(uint32_t keyID, uint32_t value);																 //Add a new KeyID and 32-bit value to an existing UBX-CFG-VALSET ubxPacket
@@ -599,208 +648,413 @@ public:
 	uint8_t sendCfgValset16(uint32_t keyID, uint16_t value, uint16_t maxWait = 250);									 //Add the final KeyID and 16-bit value to an existing UBX-CFG-VALSET ubxPacket and send it
 	uint8_t sendCfgValset32(uint32_t keyID, uint32_t value, uint16_t maxWait = 250);									 //Add the final KeyID and 32-bit value to an existing UBX-CFG-VALSET ubxPacket and send it
 
-	//Functions used for RTK and base station setup
-	//It is probably safe to assume that users of the RTK will be using I2C / Qwiic. So let's leave maxWait set to 250ms.
-	boolean getSurveyMode(uint16_t maxWait = 250);																   //Get the current TimeMode3 settings
-	boolean setSurveyMode(uint8_t mode, uint16_t observationTime, float requiredAccuracy, uint16_t maxWait = 250); //Control survey in mode
-	boolean enableSurveyMode(uint16_t observationTime, float requiredAccuracy, uint16_t maxWait = 250);			   //Begin Survey-In for NEO-M8P
-	boolean disableSurveyMode(uint16_t maxWait = 250);															   //Stop Survey-In mode
+// getPVT will only return data once in each navigation cycle. By default, that is once per second.
+// Therefore we should set defaultMaxWait to slightly longer than that.
+// If you change the navigation frequency to (e.g.) 4Hz using setNavigationFrequency(4)
+// then you should use a shorter maxWait. 300msec would be about right: getPVT(300)
 
+	// get and set functions for all of the "automatic" message processing
+
+	// Navigation (NAV)
+
+	boolean getNAVPOSECEF(uint16_t maxWait = defaultMaxWait); // NAV POSECEF
+	boolean setAutoNAVPOSECEF(boolean enabled, uint16_t maxWait = defaultMaxWait);  //Enable/disable automatic POSECEF reports at the navigation frequency
+  boolean setAutoNAVPOSECEF(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic POSECEF reports at the navigation frequency, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoNAVPOSECEFcallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic POSECEF reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoNAVPOSECEF(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and POSECEF is send cyclically already
+	boolean initPacketUBXNAVPOSECEF(); // Allocate RAM for packetUBXNAVPOSECEF and initialize it
+	void flushNAVPOSECEF(); //Mark all the data as read/stale
+	void logNAVPOSECEF(boolean enabled = true); // Log data to file buffer
+
+	boolean getNAVSTATUS(uint16_t maxWait = defaultMaxWait); // NAV STATUS
+	boolean setAutoNAVSTATUS(boolean enabled, uint16_t maxWait = defaultMaxWait);  //Enable/disable automatic STATUS reports at the navigation frequency
+  boolean setAutoNAVSTATUS(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic STATUS reports at the navigation frequency, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoNAVSTATUScallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic STATUS reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoNAVSTATUS(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and STATUS is send cyclically already
+	boolean initPacketUBXNAVSTATUS(); // Allocate RAM for packetUBXNAVSTATUS and initialize it
+	void flushNAVSTATUS(); //Mark all the data as read/stale
+	void logNAVSTATUS(boolean enabled = true); // Log data to file buffer
+
+	boolean getDOP(uint16_t maxWait = defaultMaxWait); //Query module for latest dilution of precision values and load global vars:. If autoDOP is disabled, performs an explicit poll and waits, if enabled does not block. Returns true if new DOP is available.
+  boolean setAutoDOP(boolean enabled, uint16_t maxWait = defaultMaxWait);  //Enable/disable automatic DOP reports at the navigation frequency
+  boolean setAutoDOP(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic DOP reports at the navigation frequency, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoDOPcallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic DOP reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoDOP(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and DOP is send cyclically already
+	boolean initPacketUBXNAVDOP(); // Allocate RAM for packetUBXNAVDOP and initialize it
+  void flushDOP(); //Mark all the DOP data as read/stale
+	void logNAVDOP(boolean enabled = true); // Log data to file buffer
+
+	boolean getVehAtt(uint16_t maxWait = defaultMaxWait); // NAV ATT
+	boolean setAutoNAVATT(boolean enabled, uint16_t maxWait = defaultMaxWait);  //Enable/disable automatic vehicle attitude reports at the navigation frequency
+  boolean setAutoNAVATT(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic vehicle attitude reports at the navigation frequency, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoNAVATTcallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic ATT reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoNAVATT(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and vehicle attitude is send cyclically already
+	boolean initPacketUBXNAVATT(); // Allocate RAM for packetUBXNAVATT and initialize it
+	void flushNAVATT(); //Mark all the data as read/stale
+	void logNAVATT(boolean enabled = true); // Log data to file buffer
+
+	boolean getPVT(uint16_t maxWait = defaultMaxWait);	//Query module for latest group of datums and load global vars: lat, long, alt, speed, SIV, accuracies, etc. If autoPVT is disabled, performs an explicit poll and waits, if enabled does not block. Returns true if new PVT is available.
+	boolean setAutoPVT(boolean enabled, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic PVT reports at the navigation frequency
+	boolean setAutoPVT(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic PVT reports at the navigation frequency, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoPVTcallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic PVT reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoPVT(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and PVT is send cyclically already
+	boolean initPacketUBXNAVPVT(); // Allocate RAM for packetUBXNAVPVT and initialize it
+	void flushPVT(); //Mark all the PVT data as read/stale
+	void logNAVPVT(boolean enabled = true); // Log data to file buffer
+
+	boolean getNAVODO(uint16_t maxWait = defaultMaxWait); // NAV ODO
+	boolean setAutoNAVODO(boolean enabled, uint16_t maxWait = defaultMaxWait);  //Enable/disable automatic ODO reports at the navigation frequency
+  boolean setAutoNAVODO(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic ODO reports at the navigation frequency, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoNAVODOcallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic ODO reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoNAVODO(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and ODO is send cyclically already
+	boolean initPacketUBXNAVODO(); // Allocate RAM for packetUBXNAVODO and initialize it
+	void flushNAVODO(); //Mark all the data as read/stale
+	void logNAVODO(boolean enabled = true); // Log data to file buffer
+
+	boolean getNAVVELECEF(uint16_t maxWait = defaultMaxWait); // NAV VELECEF
+	boolean setAutoNAVVELECEF(boolean enabled, uint16_t maxWait = defaultMaxWait);  //Enable/disable automatic VELECEF reports at the navigation frequency
+  boolean setAutoNAVVELECEF(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic VELECEF reports at the navigation frequency, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoNAVVELECEFcallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic VELECEF reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoNAVVELECEF(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and VELECEF is send cyclically already
+	boolean initPacketUBXNAVVELECEF(); // Allocate RAM for packetUBXNAVVELECEF and initialize it
+	void flushNAVVELECEF(); //Mark all the data as read/stale
+	void logNAVVELECEF(boolean enabled = true); // Log data to file buffer
+
+	boolean getNAVVELNED(uint16_t maxWait = defaultMaxWait); // NAV VELNED
+	boolean setAutoNAVVELNED(boolean enabled, uint16_t maxWait = defaultMaxWait);  //Enable/disable automatic VELNED reports at the navigation frequency
+  boolean setAutoNAVVELNED(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic VELNED reports at the navigation frequency, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoNAVVELNEDcallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic VELNED reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoNAVVELNED(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and VELNED is send cyclically already
+	boolean initPacketUBXNAVVELNED(); // Allocate RAM for packetUBXNAVVELNED and initialize it
+	void flushNAVVELNED(); //Mark all the data as read/stale
+	void logNAVVELNED(boolean enabled = true); // Log data to file buffer
+
+	boolean getNAVHPPOSECEF(uint16_t maxWait = defaultMaxWait); // NAV HPPOSECEF
+	boolean setAutoNAVHPPOSECEF(boolean enabled, uint16_t maxWait = defaultMaxWait);  //Enable/disable automatic HPPOSECEF reports at the navigation frequency
+  boolean setAutoNAVHPPOSECEF(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic HPPOSECEF reports at the navigation frequency, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoNAVHPPOSECEFcallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic HPPOSECEF reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoNAVHPPOSECEF(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and HPPOSECEF is send cyclically already
+	boolean initPacketUBXNAVHPPOSECEF(); // Allocate RAM for packetUBXNAVHPPOSECEF and initialize it
+	void flushNAVHPPOSECEF(); //Mark all the data as read/stale
+	void logNAVHPPOSECEF(boolean enabled = true); // Log data to file buffer
+
+	boolean getHPPOSLLH(uint16_t maxWait = defaultMaxWait); //Query module for latest group of datums and load global vars: lat, long, alt, speed, SIV, accuracies, etc. If autoPVT is disabled, performs an explicit poll and waits, if enabled does not block. Returns true if new HPPOSLLH is available.
+	boolean setAutoHPPOSLLH(boolean enabled, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic HPPOSLLH reports at the navigation frequency
+	boolean setAutoHPPOSLLH(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic HPPOSLLH reports at the navigation frequency, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoHPPOSLLHcallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic HPPOSLLH reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoHPPOSLLH(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and HPPOSLLH is send cyclically already
+	boolean initPacketUBXNAVHPPOSLLH(); // Allocate RAM for packetUBXNAVHPPOSLLH and initialize it
+	void flushHPPOSLLH(); //Mark all the HPPPOSLLH data as read/stale. This is handy to get data alignment after CRC failure
+	void logNAVHPPOSLLH(boolean enabled = true); // Log data to file buffer
+
+	boolean getNAVCLOCK(uint16_t maxWait = defaultMaxWait); // NAV CLOCK
+	boolean setAutoNAVCLOCK(boolean enabled, uint16_t maxWait = defaultMaxWait);  //Enable/disable automatic clock reports at the navigation frequency
+  boolean setAutoNAVCLOCK(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic clock reports at the navigation frequency, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoNAVCLOCKcallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic CLOCK reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoNAVCLOCK(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and clock is send cyclically already
+	boolean initPacketUBXNAVCLOCK(); // Allocate RAM for packetUBXNAVCLOCK and initialize it
+	void flushNAVCLOCK(); //Mark all the data as read/stale
+	void logNAVCLOCK(boolean enabled = true); // Log data to file buffer
+
+	// Add "auto" support for NAV SVIN - to avoid needing 'global' storage
 	boolean getSurveyStatus(uint16_t maxWait); //Reads survey in status and sets the global variables
+	boolean initPacketUBXNAVSVIN(); // Allocate RAM for packetUBXNAVSVIN and initialize it
+
+	boolean getRELPOSNED(uint16_t maxWait = defaultMaxWait); //Get Relative Positioning Information of the NED frame
+	boolean setAutoRELPOSNED(boolean enabled, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic RELPOSNED reports
+  boolean setAutoRELPOSNED(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic RELPOSNED, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoRELPOSNEDcallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic RELPOSNED reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoRELPOSNED(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and RELPOSNED is send cyclically already
+	boolean initPacketUBXNAVRELPOSNED(); // Allocate RAM for packetUBXNAVRELPOSNED and initialize it
+	void flushNAVRELPOSNED(); //Mark all the data as read/stale
+	void logNAVRELPOSNED(boolean enabled = true); // Log data to file buffer
+
+	// Receiver Manager Messages (RXM)
+
+	boolean getRXMSFRBX(uint16_t maxWait = defaultMaxWait); // RXM SFRBX
+	boolean setAutoRXMSFRBX(boolean enabled, uint16_t maxWait = defaultMaxWait);  //Enable/disable automatic RXM SFRBX reports at the navigation frequency
+	boolean setAutoRXMSFRBX(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic RXM SFRBX reports at the navigation frequency, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoRXMSFRBXcallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic SFRBX reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoRXMSFRBX(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and RXM SFRBX is send cyclically already
+	boolean initPacketUBXRXMSFRBX(); // Allocate RAM for packetUBXRXMSFRBX and initialize it
+	void flushRXMSFRBX(); //Mark all the data as read/stale
+	void logRXMSFRBX(boolean enabled = true); // Log data to file buffer
+
+	boolean getRXMRAWX(uint16_t maxWait = defaultMaxWait); // RXM RAWX
+	boolean setAutoRXMRAWX(boolean enabled, uint16_t maxWait = defaultMaxWait);  //Enable/disable automatic RXM RAWX reports at the navigation frequency
+	boolean setAutoRXMRAWX(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic RXM RAWX reports at the navigation frequency, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoRXMRAWXcallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic RAWX reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoRXMRAWX(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and RXM RAWX is send cyclically already
+	boolean initPacketUBXRXMRAWX(); // Allocate RAM for packetUBXRXMRAWX and initialize it
+	void flushRXMRAWX(); //Mark all the data as read/stale
+	void logRXMRAWX(boolean enabled = true); // Log data to file buffer
+
+	// Configuration (CFG)
+
+	// Add "auto" support for CFG RATE - because we use it for isConnected (to stop it being mugged by other messages)
+	boolean initPacketUBXCFGRATE(); // Allocate RAM for packetUBXCFGRATE and initialize it
+	boolean getNavigationFrequencyInternal(uint16_t maxWait = defaultMaxWait); //Get the number of nav solutions sent per second currently being output by module
+
+	// Timing messages (TIM)
+
+	boolean getTIMTM2(uint16_t maxWait = defaultMaxWait); // TIM TM2
+	boolean setAutoTIMTM2(boolean enabled, uint16_t maxWait = defaultMaxWait);  //Enable/disable automatic TIM TM2 reports at the navigation frequency
+	boolean setAutoTIMTM2(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic TIM TM2 reports at the navigation frequency, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoTIMTM2callback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic TM2 reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoTIMTM2(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and TIM TM2 is send cyclically already
+	boolean initPacketUBXTIMTM2(); // Allocate RAM for packetUBXTIMTM2 and initialize it
+	void flushTIMTM2(); //Mark all the data as read/stale
+	void logTIMTM2(boolean enabled = true); // Log data to file buffer
+
+	// Sensor fusion (dead reckoning) (ESF)
+
+	boolean getEsfAlignment(uint16_t maxWait = defaultMaxWait); // ESF ALG
+	boolean setAutoESFALG(boolean enabled, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic ESF ALG reports
+  boolean setAutoESFALG(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic ESF ALG reports, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoESFALGcallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic ALG reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoESFALG(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and ESF ALG is send cyclically already
+	boolean initPacketUBXESFALG(); // Allocate RAM for packetUBXESFALG and initialize it
+	void flushESFALG(); //Mark all the data as read/stale
+	void logESFALG(boolean enabled = true); // Log data to file buffer
+
+	boolean getEsfInfo(uint16_t maxWait = defaultMaxWait); // ESF STATUS
+	boolean setAutoESFSTATUS(boolean enabled, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic ESF STATUS reports
+  boolean setAutoESFSTATUS(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic ESF STATUS reports, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoESFSTATUScallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic STATUS reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoESFSTATUS(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and ESF STATUS is send cyclically already
+	boolean initPacketUBXESFSTATUS(); // Allocate RAM for packetUBXESFSTATUS and initialize it
+	void flushESFSTATUS(); //Mark all the data as read/stale
+	void logESFSTATUS(boolean enabled = true); // Log data to file buffer
+
+	boolean getEsfIns(uint16_t maxWait = defaultMaxWait); // ESF INS
+	boolean setAutoESFINS(boolean enabled, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic ESF INS reports
+  boolean setAutoESFINS(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic ESF INS reports, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoESFINScallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic INS reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoESFINS(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and ESF INS is send cyclically already
+	boolean initPacketUBXESFINS(); // Allocate RAM for packetUBXESFINS and initialize it
+	void flushESFINS(); //Mark all the data as read/stale
+	void logESFINS(boolean enabled = true); // Log data to file buffer
+
+	boolean getEsfDataInfo(uint16_t maxWait = defaultMaxWait); // ESF MEAS
+	boolean setAutoESFMEAS(boolean enabled, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic ESF MEAS reports
+  boolean setAutoESFMEAS(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic ESF MEAS reports, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoESFMEAScallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic MEAS reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoESFMEAS(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and ESF MEAS is send cyclically already
+	boolean initPacketUBXESFMEAS(); // Allocate RAM for packetUBXESFMEAS and initialize it
+	void flushESFMEAS(); //Mark all the data as read/stale
+	void logESFMEAS(boolean enabled = true); // Log data to file buffer
+
+	boolean getEsfRawDataInfo(uint16_t maxWait = defaultMaxWait); // ESF RAW
+	boolean setAutoESFRAW(boolean enabled, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic ESF RAW reports
+  boolean setAutoESFRAW(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic ESF RAW reports, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoESFRAWcallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic RAW reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoESFRAW(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and ESF RAW is send cyclically already
+	boolean initPacketUBXESFRAW(); // Allocate RAM for packetUBXESFRAW and initialize it
+	void flushESFRAW(); //Mark all the data as read/stale
+	void logESFRAW(boolean enabled = true); // Log data to file buffer
+
+	// High navigation rate (HNR)
+
+	boolean getHNRAtt(uint16_t maxWait = defaultMaxWait); // Returns true if the get HNR attitude is successful. Data is returned in hnrAtt
+  boolean setAutoHNRAtt(boolean enabled, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic HNR Attitude reports at the HNR rate
+  boolean setAutoHNRAtt(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic HNR Attitude reports at the HNR rate, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoHNRAttcallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic ATT reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoHNRAtt(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and HNR Attitude is send cyclically already
+	boolean initPacketUBXHNRATT(); // Allocate RAM for packetUBXHNRATT and initialize it
+	void flushHNRATT(); //Mark all the data as read/stale
+	void logHNRATT(boolean enabled = true); // Log data to file buffer
+
+	boolean getHNRDyn(uint16_t maxWait = defaultMaxWait); // Returns true if the get HNR dynamics is successful. Data is returned in hnrVehDyn
+  boolean setAutoHNRDyn(boolean enabled, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic HNR dynamics reports at the HNR rate
+  boolean setAutoHNRDyn(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic HNR dynamics reports at the HNR rate, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoHNRDyncallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic INS reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoHNRDyn(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and HNR dynamics is send cyclically already
+	boolean initPacketUBXHNRINS(); // Allocate RAM for packetUBXHNRINS and initialize it
+	void flushHNRINS(); //Mark all the data as read/stale
+	void logHNRINS(boolean enabled = true); // Log data to file buffer
+
+	boolean getHNRPVT(uint16_t maxWait = defaultMaxWait); // Returns true if the get HNR PVT is successful. Data is returned in hnrPVT
+  boolean setAutoHNRPVT(boolean enabled, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic HNR PVT reports at the HNR rate
+  boolean setAutoHNRPVT(boolean enabled, boolean implicitUpdate, uint16_t maxWait = defaultMaxWait); //Enable/disable automatic HNR PVT reports at the HNR rate, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+	boolean setAutoHNRPVTcallback(void (*callbackPointer)(), uint16_t maxWait = defaultMaxWait); //Enable automatic PVT reports at the navigation frequency. Data is accessed from the callback.
+	boolean assumeAutoHNRPVT(boolean enabled, boolean implicitUpdate = true); //In case no config access to the GPS is possible and HNR PVT is send cyclically already
+	boolean initPacketUBXHNRPVT(); // Allocate RAM for packetUBXHNRPVT and initialize it
+	void flushHNRPVT(); //Mark all the data as read/stale
+	void logHNRPVT(boolean enabled = true); // Log data to file buffer
+
+	// Helper functions for CFG RATE
+
+	boolean setNavigationFrequency(uint8_t navFreq, uint16_t maxWait = defaultMaxWait);	 //Set the number of nav solutions sent per second
+	uint8_t getNavigationFrequency(uint16_t maxWait = defaultMaxWait);					 //Get the number of nav solutions sent per second currently being output by module
+
+	// Helper functions for DOP
+
+  uint16_t getGeometricDOP(uint16_t maxWait = defaultMaxWait);
+  uint16_t getPositionDOP(uint16_t maxWait = defaultMaxWait);
+  uint16_t getTimeDOP(uint16_t maxWait = defaultMaxWait);
+  uint16_t getVerticalDOP(uint16_t maxWait = defaultMaxWait);
+  uint16_t getHorizontalDOP(uint16_t maxWait = defaultMaxWait);
+  uint16_t getNorthingDOP(uint16_t maxWait = defaultMaxWait);
+  uint16_t getEastingDOP(uint16_t maxWait = defaultMaxWait);
+
+	// Helper functions for PVT
+
+	uint32_t getTimeOfWeek(uint16_t maxWait = defaultMaxWait);
+	uint16_t getYear(uint16_t maxWait = defaultMaxWait);
+	uint8_t getMonth(uint16_t maxWait = defaultMaxWait);
+	uint8_t getDay(uint16_t maxWait = defaultMaxWait);
+	uint8_t getHour(uint16_t maxWait = defaultMaxWait);
+	uint8_t getMinute(uint16_t maxWait = defaultMaxWait);
+	uint8_t getSecond(uint16_t maxWait = defaultMaxWait);
+	uint16_t getMillisecond(uint16_t maxWait = defaultMaxWait);
+	int32_t getNanosecond(uint16_t maxWait = defaultMaxWait);
+
+	bool getDateValid(uint16_t maxWait = defaultMaxWait);
+	bool getTimeValid(uint16_t maxWait = defaultMaxWait);
+
+	uint8_t getFixType(uint16_t maxWait = defaultMaxWait);			  //Returns the type of fix: 0=no, 3=3D, 4=GNSS+Deadreckoning
+
+	bool getGnssFixOk(uint16_t maxWait = defaultMaxWait);          //Get whether we have a valid fix (i.e within DOP & accuracy masks)
+	bool getDiffSoln(uint16_t maxWait = defaultMaxWait);           //Get whether differential corrections were applied
+	bool getHeadVehValid(uint16_t maxWait = defaultMaxWait);
+	uint8_t getCarrierSolutionType(uint16_t maxWait = defaultMaxWait); //Returns RTK solution: 0=no, 1=float solution, 2=fixed solution
+
+	uint8_t getSIV(uint16_t maxWait = defaultMaxWait);				  //Returns number of sats used in fix
+	int32_t getLongitude(uint16_t maxWait = defaultMaxWait);			  //Returns the current longitude in degrees * 10-7. Auto selects between HighPrecision and Regular depending on ability of module.
+	int32_t getLatitude(uint16_t maxWait = defaultMaxWait);			  //Returns the current latitude in degrees * 10^-7. Auto selects between HighPrecision and Regular depending on ability of module.
+	int32_t getAltitude(uint16_t maxWait = defaultMaxWait);			  //Returns the current altitude in mm above ellipsoid
+	int32_t getAltitudeMSL(uint16_t maxWait = defaultMaxWait);		  //Returns the current altitude in mm above mean sea level
+	int32_t getHorizontalAccEst(uint16_t maxWait = defaultMaxWait);
+	int32_t getVerticalAccEst(uint16_t maxWait = defaultMaxWait);
+	int32_t getNedNorthVel(uint16_t maxWait = defaultMaxWait);
+	int32_t getNedEastVel(uint16_t maxWait = defaultMaxWait);
+	int32_t getNedDownVel(uint16_t maxWait = defaultMaxWait);
+	int32_t getGroundSpeed(uint16_t maxWait = defaultMaxWait);		  //Returns speed in mm/s
+	int32_t getHeading(uint16_t maxWait = defaultMaxWait);			  //Returns heading in degrees * 10^-5
+	uint32_t getSpeedAccEst(uint16_t maxWait = defaultMaxWait);
+	uint32_t getHeadingAccEst(uint16_t maxWait = defaultMaxWait);
+	uint16_t getPDOP(uint16_t maxWait = defaultMaxWait);				  //Returns positional dillution of precision * 10^-2 (dimensionless)
+
+	bool getInvalidLlh(uint16_t maxWait = defaultMaxWait);
+
+	int32_t getHeadVeh(uint16_t maxWait = defaultMaxWait);
+	int16_t getMagDec(uint16_t maxWait = defaultMaxWait);
+	uint16_t getMagAcc(uint16_t maxWait = defaultMaxWait);
+
+	int32_t getGeoidSeparation(uint16_t maxWait = defaultMaxWait);
+
+	// Helper functions for HPPOSECEF
 
 	uint32_t getPositionAccuracy(uint16_t maxWait = 1100); //Returns the 3D accuracy of the current high-precision fix, in mm. Supported on NEO-M8P, ZED-F9P,
 
-	uint8_t getProtocolVersionHigh(uint16_t maxWait = 500); //Returns the PROTVER XX.00 from UBX-MON-VER register
-	uint8_t getProtocolVersionLow(uint16_t maxWait = 500);	//Returns the PROTVER 00.XX from UBX-MON-VER register
-	boolean getProtocolVersion(uint16_t maxWait = 500);		//Queries module, loads low/high bytes
+	// Helper functions for HPPOSLLH
 
-	boolean getRELPOSNED(uint16_t maxWait = 1100); //Get Relative Positioning Information of the NED frame
+	uint32_t getTimeOfWeekFromHPPOSLLH(uint16_t maxWait = defaultMaxWait);
+	int32_t getHighResLongitude(uint16_t maxWait = defaultMaxWait);
+	int32_t getHighResLatitude(uint16_t maxWait = defaultMaxWait);
+	int32_t getElipsoid(uint16_t maxWait = defaultMaxWait);
+	int32_t getMeanSeaLevel(uint16_t maxWait = defaultMaxWait);
+	int8_t getHighResLongitudeHp(uint16_t maxWait = defaultMaxWait);
+	int8_t getHighResLatitudeHp(uint16_t maxWait = defaultMaxWait);
+	int8_t getElipsoidHp(uint16_t maxWait = defaultMaxWait);
+	int8_t getMeanSeaLevelHp(uint16_t maxWait = defaultMaxWait);
+	uint32_t getHorizontalAccuracy(uint16_t maxWait = defaultMaxWait);
+	uint32_t getVerticalAccuracy(uint16_t maxWait = defaultMaxWait);
 
-	void enableDebugging(Stream &debugPort = Serial, boolean printLimitedDebug = false); //Given a port to print to, enable debug messages. Default to all, not limited.
-	void disableDebugging(void);														 //Turn off debug statements
-	void debugPrint(char *message);														 //Safely print debug statements
-	void debugPrintln(char *message);													 //Safely print debug statements
-	const char *statusString(sfe_ublox_status_e stat);									 //Pretty print the return value
+	// Helper functions for SVIN
 
-	//Support for geofences
-	boolean addGeofence(int32_t latitude, int32_t longitude, uint32_t radius, byte confidence = 0, byte pinPolarity = 0, byte pin = 0, uint16_t maxWait = 1100); // Add a new geofence
-	boolean clearGeofences(uint16_t maxWait = 1100);																											 //Clears all geofences
-	boolean getGeofenceState(geofenceState &currentGeofenceState, uint16_t maxWait = 1100);																		 //Returns the combined geofence state
-	boolean clearAntPIO(uint16_t maxWait = 1100);																												 //Clears the antenna control pin settings to release the PIOs
-	geofenceParams currentGeofenceParams;																														 // Global to store the geofence parameters
+	boolean getSurveyInActive(uint16_t maxWait = defaultMaxWait);
+	boolean getSurveyInValid(uint16_t maxWait = defaultMaxWait);
+	uint16_t getSurveyInObservationTime(uint16_t maxWait = defaultMaxWait); // Truncated to 65535 seconds
+	float getSurveyInMeanAccuracy(uint16_t maxWait = defaultMaxWait); // Returned as m
 
-	boolean powerSaveMode(bool power_save = true, uint16_t maxWait = 1100);
-	uint8_t getPowerSaveMode(uint16_t maxWait = 1100); // Returns 255 if the sendCommand fails
-	boolean powerOff(uint32_t durationInMs, uint16_t maxWait = 1100);
-	boolean powerOffWithInterrupt(uint32_t durationInMs, uint32_t wakeupSources = VAL_RXM_PMREQ_WAKEUPSOURCE_EXTINT0, boolean forceWhileUsb = true, uint16_t maxWait = 1100);
+	// Helper functions for RELPOSNED
 
-	//Change the dynamic platform model using UBX-CFG-NAV5
-	boolean setDynamicModel(dynModel newDynamicModel = DYN_MODEL_PORTABLE, uint16_t maxWait = 1100);
-	uint8_t getDynamicModel(uint16_t maxWait = 1100); // Get the dynamic model - returns 255 if the sendCommand fails
+	float getRelPosN(uint16_t maxWait = defaultMaxWait); // Returned as m
+	float getRelPosE(uint16_t maxWait = defaultMaxWait); // Returned as m
+	float getRelPosD(uint16_t maxWait = defaultMaxWait); // Returned as m
+	float getRelPosAccN(uint16_t maxWait = defaultMaxWait); // Returned as m
+	float getRelPosAccE(uint16_t maxWait = defaultMaxWait); // Returned as m
+	float getRelPosAccD(uint16_t maxWait = defaultMaxWait); // Returned as m
 
-	boolean getEsfInfo(uint16_t maxWait = 1100);
-	boolean getEsfIns(uint16_t maxWait = 1100);
-	boolean getEsfDataInfo(uint16_t maxWait = 1100);
-	boolean getEsfRawDataInfo(uint16_t maxWait = 1100);
-	sfe_ublox_status_e getSensState(uint8_t sensor, uint16_t maxWait = 1100);
-	boolean getVehAtt(uint16_t maxWait = 1100);
+	// Helper functions for ESF
 
-	// Given coordinates, put receiver into static position. Set latlong to true to pass in lat/long values instead of ecef.
-	// For ECEF the units are: cm, 0.1mm, cm, 0.1mm, cm, 0.1mm
-	// For Lat/Lon/Alt the units are: degrees^-7, degrees^-9, degrees^-7, degrees^-9, cm, 0.1mm
-	bool setStaticPosition(int32_t ecefXOrLat, int8_t ecefXOrLatHP, int32_t ecefYOrLon, int8_t ecefYOrLonHP, int32_t ecefZOrAlt, int8_t ecefZOrAltHP, bool latLong = false, uint16_t maxWait = 250);
-	bool setStaticPosition(int32_t ecefXOrLat, int32_t ecefYOrLon, int32_t ecefZOrAlt, bool latLong = false, uint16_t maxWait = 250);
+	boolean getSensorFusionMeasurement(UBX_ESF_MEAS_sensorData_t *sensorData, uint8_t sensor, uint16_t maxWait = defaultMaxWait);
+	boolean getRawSensorMeasurement(UBX_ESF_RAW_sensorData_t *sensorData, uint8_t sensor, uint16_t maxWait = defaultMaxWait);
+	boolean getSensorFusionStatus(UBX_ESF_STATUS_sensorStatus_t *sensorStatus, uint8_t sensor, uint16_t maxWait = defaultMaxWait);
 
-	//Survey-in specific controls
-	struct svinStructure
-	{
-		boolean active;
-		boolean valid;
-		uint16_t observationTime;
-		float meanAccuracy;
-	} svin;
+	// Helper functions for HNR
 
-	//Relative Positioning Info in NED frame specific controls
-	struct frelPosInfoStructure
-	{
-		uint16_t refStationID;
+	boolean setHNRNavigationRate(uint8_t rate, uint16_t maxWait = 1100); // Returns true if the setHNRNavigationRate is successful
+	uint8_t getHNRNavigationRate(uint16_t maxWait = 1100); // Returns 0 if the getHNRNavigationRate fails
 
-		float relPosN;
-		float relPosE;
-		float relPosD;
+	// Functions to extract signed and unsigned 8/16/32-bit data from a ubxPacket
+	// From v2.0: These are public. The user can call these to extract data from custom packets
+	uint32_t extractLong(ubxPacket *msg, uint8_t spotToStart);																	 //Combine four bytes from payload into long
+	int32_t extractSignedLong(ubxPacket *msg, uint8_t spotToStart);																//Combine four bytes from payload into signed long (avoiding any ambiguity caused by casting)
+	uint16_t extractInt(ubxPacket *msg, uint8_t spotToStart);																	 //Combine two bytes from payload into int
+	int16_t extractSignedInt(ubxPacket *msg, int8_t spotToStart);
+	uint8_t extractByte(ubxPacket *msg, uint8_t spotToStart);																	 //Get byte from payload
+	int8_t extractSignedChar(ubxPacket *msg, uint8_t spotToStart);																 //Get signed 8-bit value from payload
 
-		long relPosLength;
-		long relPosHeading;
+	// Pointers to storage for the "automatic" messages
+	// RAM is allocated for these if/when required.
 
-		int8_t relPosHPN;
-		int8_t relPosHPE;
-		int8_t relPosHPD;
-		int8_t relPosHPLength;
+	UBX_NAV_POSECEF_t *packetUBXNAVPOSECEF = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_NAV_POSECEF_data_t *packetUBXNAVPOSECEFcopy = NULL; // Copy of the data - to be passed to the callback if required
+	UBX_NAV_STATUS_t *packetUBXNAVSTATUS = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_NAV_STATUS_data_t *packetUBXNAVSTATUScopy = NULL; // Copy of the data - to be passed to the callback if required
+	UBX_NAV_DOP_t *packetUBXNAVDOP = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_NAV_DOP_data_t *packetUBXNAVDOPcopy = NULL; // Copy of the data - to be passed to the callback if required
+	UBX_NAV_ATT_t *packetUBXNAVATT = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_NAV_ATT_data_t *packetUBXNAVATTcopy = NULL; // Copy of the data - to be passed to the callback if required
+	UBX_NAV_PVT_t *packetUBXNAVPVT = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_NAV_PVT_data_t *packetUBXNAVPVTcopy = NULL; // Copy of the data - to be passed to the callback if required
+	UBX_NAV_ODO_t *packetUBXNAVODO = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_NAV_ODO_data_t *packetUBXNAVODOcopy = NULL; // Copy of the data - to be passed to the callback if required
+	UBX_NAV_VELECEF_t *packetUBXNAVVELECEF = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_NAV_VELECEF_data_t *packetUBXNAVVELECEFcopy = NULL; // Copy of the data - to be passed to the callback if required
+	UBX_NAV_VELNED_t *packetUBXNAVVELNED = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_NAV_VELNED_data_t *packetUBXNAVVELNEDcopy = NULL; // Copy of the data - to be passed to the callback if required
+	UBX_NAV_HPPOSECEF_t *packetUBXNAVHPPOSECEF = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_NAV_HPPOSECEF_data_t *packetUBXNAVHPPOSECEFcopy = NULL; // Copy of the data - to be passed to the callback if required
+	UBX_NAV_HPPOSLLH_t *packetUBXNAVHPPOSLLH = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_NAV_HPPOSLLH_data_t *packetUBXNAVHPPOSLLHcopy = NULL; // Copy of the data - to be passed to the callback if required
+	UBX_NAV_CLOCK_t *packetUBXNAVCLOCK = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_NAV_CLOCK_data_t *packetUBXNAVCLOCKcopy = NULL; // Copy of the data - to be passed to the callback if required
+	UBX_NAV_SVIN_t *packetUBXNAVSVIN = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_NAV_RELPOSNED_t *packetUBXNAVRELPOSNED = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_NAV_RELPOSNED_data_t *packetUBXNAVRELPOSNEDcopy = NULL; // Copy of the data - to be passed to the callback if required
 
-		float accN;
-		float accE;
-		float accD;
+	UBX_RXM_SFRBX_t *packetUBXRXMSFRBX = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_RXM_SFRBX_data_t *packetUBXRXMSFRBXcopy = NULL; // Copy of the data - to be passed to the callback if required
+	UBX_RXM_RAWX_t *packetUBXRXMRAWX = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_RXM_RAWX_data_t *packetUBXRXMRAWXcopy = NULL; // Copy of the data - to be passed to the callback if required
 
-		bool gnssFixOk;
-		bool diffSoln;
-		bool relPosValid;
-		uint8_t carrSoln;
-		bool isMoving;
-		bool refPosMiss;
-		bool refObsMiss;
-	} relPosInfo;
+	UBX_CFG_RATE_t *packetUBXCFGRATE = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
 
-	//The major datums we want to globally store
-	uint16_t gpsYear;
-	uint8_t gpsMonth;
-	uint8_t gpsDay;
-	uint8_t gpsHour;
-	uint8_t gpsMinute;
-	uint8_t gpsSecond;
-	uint16_t gpsMillisecond;
-	int32_t gpsNanosecond;
-	bool gpsDateValid;
-	bool gpsTimeValid;
+	UBX_TIM_TM2_t *packetUBXTIMTM2 = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_TIM_TM2_data_t *packetUBXTIMTM2copy = NULL; // Copy of the data - to be passed to the callback if required
 
+	UBX_ESF_ALG_t *packetUBXESFALG = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_ESF_ALG_data_t *packetUBXESFALGcopy = NULL; // Copy of the data - to be passed to the callback if required
+	UBX_ESF_INS_t *packetUBXESFINS = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_ESF_INS_data_t *packetUBXESFINScopy = NULL; // Copy of the data - to be passed to the callback if required
+	UBX_ESF_MEAS_t *packetUBXESFMEAS = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_ESF_MEAS_data_t *packetUBXESFMEAScopy = NULL; // Copy of the data - to be passed to the callback if required
+	UBX_ESF_RAW_t *packetUBXESFRAW = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_ESF_RAW_data_t *packetUBXESFRAWcopy = NULL; // Copy of the data - to be passed to the callback if required
+	UBX_ESF_STATUS_t *packetUBXESFSTATUS = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_ESF_STATUS_data_t *packetUBXESFSTATUScopy = NULL; // Copy of the data - to be passed to the callback if required
 
-  bool gnssFixOk;      //valid fix (i.e within DOP & accuracy masks)
-  bool diffSoln;       //Differential corrections were applied
-	int32_t latitude;		 //Degrees * 10^-7 (more accurate than floats)
-	int32_t longitude;		 //Degrees * 10^-7 (more accurate than floats)
-	int32_t altitude;		 //Number of mm above ellipsoid
-	int32_t altitudeMSL;	 //Number of mm above Mean Sea Level
-	uint8_t SIV;			 //Number of satellites used in position solution
-	uint8_t fixType;		 //Tells us when we have a solution aka lock
-	uint8_t carrierSolution; //Tells us when we have an RTK float/fixed solution
-	int32_t groundSpeed;	 //mm/s
-	int32_t headingOfMotion; //degrees * 10^-5
-	uint16_t pDOP;			 //Positional dilution of precision * 10^-2 (dimensionless)
-	uint8_t versionLow;		 //Loaded from getProtocolVersion().
-	uint8_t versionHigh;
-
-	uint32_t timeOfWeek;		 // ms
-	int32_t highResLatitude;	 // Degrees * 10^-7
-	int32_t highResLongitude;	 // Degrees * 10^-7
-	int32_t elipsoid;			 // Height above ellipsoid in mm (Typo! Should be eLLipsoid! **Uncorrected for backward-compatibility.**)
-	int32_t meanSeaLevel;		 // Height above mean sea level in mm
-	int32_t geoidSeparation;	 // This seems to only be provided in NMEA GGA and GNS messages
-	uint32_t horizontalAccuracy; // mm * 10^-1 (i.e. 0.1mm)
-	uint32_t verticalAccuracy;	 // mm * 10^-1 (i.e. 0.1mm)
-	int8_t elipsoidHp;			 // High precision component of the height above ellipsoid in mm * 10^-1 (Deliberate typo! Should be eLLipsoidHp!)
-	int8_t meanSeaLevelHp;		 // High precision component of Height above mean sea level in mm * 10^-1
-	int8_t highResLatitudeHp;	 // High precision component of latitude: Degrees * 10^-9
-	int8_t highResLongitudeHp;	 // High precision component of longitude: Degrees * 10^-9
+	UBX_HNR_PVT_t *packetUBXHNRPVT = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_HNR_PVT_data_t *packetUBXHNRPVTcopy = NULL; // Copy of the data - to be passed to the callback if required
+	UBX_HNR_ATT_t *packetUBXHNRATT = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_HNR_ATT_data_t *packetUBXHNRATTcopy = NULL; // Copy of the data - to be passed to the callback if required
+	UBX_HNR_INS_t *packetUBXHNRINS = NULL; // Pointer to struct. RAM will be allocated for this if/when necessary
+	UBX_HNR_INS_data_t *packetUBXHNRINScopy = NULL; // Copy of the data - to be passed to the callback if required
 
 	uint16_t rtcmFrameCounter = 0; //Tracks the type of incoming byte inside RTCM frame
-
-uint16_t geometricDOP; // Geometric dilution of precision * 10^-2
-uint16_t positionDOP; // Posoition dilution of precision * 10^-2
-uint16_t timeDOP; // Time dilution of precision * 10^-2
-uint16_t verticalDOP; // Vertical dilution of precision * 10^-2
-uint16_t horizontalDOP; // Horizontal dilution of precision * 10^-2
-uint16_t northingDOP; // Northing dilution of precision * 10^-2
-uint16_t eastingDOP; // Easting dilution of precision * 10^-2
-
-#define DEF_NUM_SENS 7
-	struct deadReckData
-	{
-		uint8_t version;
-		uint8_t fusionMode;
-
-		uint8_t xAngRateVald;
-		uint8_t yAngRateVald;
-		uint8_t zAngRateVald;
-		uint8_t xAccelVald;
-		uint8_t yAccelVald;
-		uint8_t zAccelVald;
-
-		int32_t xAngRate;
-		int32_t yAngRate;
-		int32_t zAngRate;
-
-		int32_t xAccel;
-		int32_t yAccel;
-		int32_t zAccel;
-
-		// The array size is based on testing directly on M8U and F9R
-		uint32_t rawData;
-		uint32_t rawDataType;
-		uint32_t rawTStamp;
-
-		uint32_t data[DEF_NUM_SENS];
-		uint32_t dataType[DEF_NUM_SENS];
-		uint32_t dataTStamp[DEF_NUM_SENS];
-	} imuMeas;
-
-	struct indivImuData
-	{
-
-		uint8_t numSens;
-
-		uint8_t senType;
-		boolean isUsed;
-		boolean isReady;
-		uint8_t calibStatus;
-		uint8_t timeStatus;
-
-		uint8_t freq; // Hz
-
-		boolean badMeas;
-		boolean badTag;
-		boolean missMeas;
-		boolean noisyMeas;
-	} ubloxSen;
-
-	struct vehicleAttitude
-	{
-		// All values in degrees
-		int32_t roll;
-		int32_t pitch;
-		int32_t heading;
-		uint32_t accRoll;
-		uint32_t accPitch;
-		uint32_t accHeading;
-	} vehAtt;
 
 private:
 	//Depending on the sentence type the processor will load characters into different arrays
@@ -829,11 +1083,16 @@ private:
 
 	//Functions
 	boolean checkUbloxInternal(ubxPacket *incomingUBX, uint8_t requestedClass = 255, uint8_t requestedID = 255); //Checks module with user selected commType
-	uint32_t extractLong(uint8_t spotToStart);																	 //Combine four bytes from payload into long
-	uint16_t extractInt(uint8_t spotToStart);																	 //Combine two bytes from payload into int
-	uint8_t extractByte(uint8_t spotToStart);																	 //Get byte from payload
-	int8_t extractSignedChar(uint8_t spotToStart);																 //Get signed 8-bit value from payload
 	void addToChecksum(uint8_t incoming);																		 //Given an incoming byte, adjust rollingChecksumA/B
+
+	//Return true if this "automatic" message has storage allocated for it
+	boolean checkAutomatic(uint8_t Class, uint8_t ID);
+
+	//Calculate how much RAM is needed to store the payload for a given automatic message
+	uint16_t getMaxPayloadSize(uint8_t Class, uint8_t ID);
+
+	boolean initGeofenceParams(); // Allocate RAM for currentGeofenceParams and initialize it
+	boolean initModuleSWVersion(); // Allocate RAM for moduleSWVersion and initialize it
 
 	//Variables
 	TwoWire *_i2cPort;				//The generic connection to user's chosen I2C hardware
@@ -847,16 +1106,21 @@ private:
 	boolean _printDebug = false;		//Flag to print the serial commands we are sending to the Serial port for debug
 	boolean _printLimitedDebug = false; //Flag to print limited debug messages. Useful for I2C debugging or high navigation rates
 
+	boolean ubx7FcheckDisabled = false; // Flag to indicate if the "7F" check should be ignored in checkUbloxI2C
+
 	//The packet buffers
 	//These are pointed at from within the ubxPacket
 	uint8_t payloadAck[2];				  // Holds the requested ACK/NACK
-	uint8_t payloadCfg[MAX_PAYLOAD_SIZE]; // Holds the requested data packet
 	uint8_t payloadBuf[2];				  // Temporary buffer used to screen incoming packets or dump unrequested packets
+	size_t packetCfgPayloadSize = 0; // Size for the packetCfg payload. .begin will set this to MAX_PAYLOAD_SIZE if necessary. User can change with setPacketCfgPayloadSize
+	uint8_t *payloadCfg = NULL;
+	uint8_t *payloadAuto = NULL;
 
-	//Init the packet structures and init them with pointers to the payloadAck, payloadCfg and payloadBuf arrays
+	//Init the packet structures and init them with pointers to the payloadAck, payloadCfg, payloadBuf and payloadAuto arrays
 	ubxPacket packetAck = {0, 0, 0, 0, 0, payloadAck, 0, 0, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED};
-	ubxPacket packetCfg = {0, 0, 0, 0, 0, payloadCfg, 0, 0, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED};
 	ubxPacket packetBuf = {0, 0, 0, 0, 0, payloadBuf, 0, 0, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED};
+	ubxPacket packetCfg = {0, 0, 0, 0, 0, payloadCfg, 0, 0, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED};
+	ubxPacket packetAuto = {0, 0, 0, 0, 0, payloadAuto, 0, 0, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED, SFE_UBLOX_PACKET_VALIDITY_NOT_DEFINED};
 
 	//Flag if this packet is unrequested (and so should be ignored and not copied into packetCfg or packetAck)
 	boolean ignoreThisPayload = false;
@@ -864,89 +1128,39 @@ private:
 	//Identify which buffer is in use
 	//Data is stored in packetBuf until the requested class and ID can be validated
 	//If a match is seen, data is diverted into packetAck or packetCfg
+	//"Automatic" messages which have RAM allocated for them are diverted into packetAuto
 	sfe_ublox_packet_buffer_e activePacketBuffer = SFE_UBLOX_PACKET_PACKETBUF;
 
 	//Limit checking of new data to every X ms
 	//If we are expecting an update every X Hz then we should check every half that amount of time
 	//Otherwise we may block ourselves from seeing new data
-	uint8_t i2cPollingWait = 100; //Default to 100ms. Adjusted when user calls setNavigationFrequency()
+	uint8_t i2cPollingWait = 100; //Default to 100ms. Adjusted when user calls setNavigationFrequency() or setHNRNavigationRate()
 
 	unsigned long lastCheck = 0;
-	boolean autoPVT = false;			  //Whether autoPVT is enabled or not
-	boolean autoPVTImplicitUpdate = true; // Whether autoPVT is triggered by accessing stale data (=true) or by a call to checkUblox (=false)
-	boolean autoHPPOSLLH = false;			  //Whether autoHPPOSLLH is enabled or not
-	boolean autoHPPOSLLHImplicitUpdate = true; // Whether autoHPPOSLLH is triggered by accessing stale data (=true) or by a call to checkUblox (=false)
-  boolean autoDOP = false;       //Whether autoDOP is enabled or not
-  boolean autoDOPImplicitUpdate = true; // Whether autoDOP is triggered by accessing stale data (=true) or by a call to checkUblox (=false)
- 
+
 	uint16_t ubxFrameCounter;			  //It counts all UBX frame. [Fixed header(2bytes), CLS(1byte), ID(1byte), length(2bytes), payload(x bytes), checksums(2bytes)]
 
 	uint8_t rollingChecksumA; //Rolls forward as we receive incoming bytes. Checked against the last two A/B checksum bytes
 	uint8_t rollingChecksumB; //Rolls forward as we receive incoming bytes. Checked against the last two A/B checksum bytes
 
-	//Create bit field for staleness of each datum in PVT we want to monitor
-	//moduleQueried.latitude goes true each time we call getPVT()
-	//This reduces the number of times we have to call getPVT as this can take up to ~1s per read
-	//depending on update rate
-	struct
-	{
-		uint32_t gpsiTOW : 1;
-		uint32_t gpsYear : 1;
-		uint32_t gpsMonth : 1;
-		uint32_t gpsDay : 1;
-		uint32_t gpsHour : 1;
-		uint32_t gpsMinute : 1;
-		uint32_t gpsSecond : 1;
-		uint32_t gpsDateValid : 1;
-		uint32_t gpsTimeValid : 1;
-		uint32_t gpsNanosecond : 1;
-
-		uint32_t all : 1;
-    uint32_t gnssFixOk : 1;
-    uint32_t diffSoln : 1;
-		uint32_t longitude : 1;
-		uint32_t latitude : 1;
-		uint32_t altitude : 1;
-		uint32_t altitudeMSL : 1;
-		uint32_t SIV : 1;
-		uint32_t fixType : 1;
-		uint32_t carrierSolution : 1;
-		uint32_t groundSpeed : 1;
-		uint32_t headingOfMotion : 1;
-		uint32_t pDOP : 1;
-		uint32_t versionNumber : 1;
-	} moduleQueried;
-
-	struct
-	{
-		uint16_t all : 1;
-		uint16_t timeOfWeek : 1;
-		uint16_t highResLatitude : 1;
-		uint16_t highResLongitude : 1;
-		uint16_t elipsoid : 1;
-		uint16_t meanSeaLevel : 1;
-		uint16_t geoidSeparation : 1; // Redundant but kept for backward-compatibility
-		uint16_t horizontalAccuracy : 1;
-		uint16_t verticalAccuracy : 1;
-		uint16_t elipsoidHp : 1;
-		uint16_t meanSeaLevelHp : 1;
-		uint16_t highResLatitudeHp : 1;
-		uint16_t highResLongitudeHp : 1;
-	} highResModuleQueried;
-
-  struct
-  {
-    uint16_t all : 1;
-    uint16_t geometricDOP : 1;
-    uint16_t positionDOP : 1;
-    uint16_t timeDOP : 1;
-    uint16_t verticalDOP : 1;
-    uint16_t horizontalDOP : 1;
-    uint16_t northingDOP : 1;
-    uint16_t eastingDOP : 1;
-  } dopModuleQueried;
-
 	uint16_t rtcmLen = 0;
+
+	// Flag to prevent reentry into checkCallbacks
+	// Prevent badness if the user accidentally calls checkCallbacks from inside a callback
+	boolean checkCallbacksReentrant = false;
+
+	// Support for data logging
+	uint8_t *ubxFileBuffer = NULL; // Pointer to the file buffer. RAM is allocated for this if required in .begin
+	uint16_t fileBufferSize = 0; // The size of the file buffer. This can be changed by calling setFileBufferSize _before_ .begin
+	uint16_t fileBufferHead; // The incoming byte is written into the file buffer at this location
+	uint16_t fileBufferTail; // The next byte to be read from the buffer will be read from this location
+	uint16_t fileBufferMaxAvail = 0; // The maximum number of bytes the file buffer has contained. Handy for checking the buffer is large enough to handle all the incoming data.
+	boolean createFileBuffer(void); // Create the file buffer. Called by .begin
+	uint16_t fileBufferSpaceAvailable(void); // Check how much space is available in the buffer
+	uint16_t fileBufferSpaceUsed(void); // Check how much space is used in the buffer
+	boolean storePacket(ubxPacket *msg); // Add a UBX packet to the file buffer
+	boolean storeFileBytes(uint8_t *theBytes, uint16_t numBytes); // Add theBytes to the file buffer
+	void writeToFileBuffer(uint8_t *theBytes, uint16_t numBytes); // Write theBytes to the file buffer
 };
 
 #endif
