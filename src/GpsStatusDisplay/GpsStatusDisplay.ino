@@ -158,7 +158,7 @@ void OnDOPChanged()
 }
 void configureGps()
 {
-  Wire.setClock(400000); //Increase I2C clock speed to 400kHz
+  //Wire.setClock(400000); //Increase I2C clock speed to 400kHz
   gps.setI2COutput(COM_TYPE_UBX); //Sets I2C to communicate with just the UBX protocol
   // Ensure UART2 bluetooth is configured correctly: 115200 baud, 1 stopbit, 8 databits, parity none(0)
   gps.setVal32(UBLOX_CFG_UART2_BAUDRATE, 115200, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR);
@@ -166,7 +166,7 @@ void configureGps()
   gps.setVal8(UBLOX_CFG_UART2_DATABITS, 8, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR);
   gps.setVal8(UBLOX_CFG_UART2_PARITY, 0, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR);
 
-  //gps.enableDebugging(Serial);
+  //gps.enableDebugging(Serial, true); 
   gps.setAutoPVTcallback(onPVTDataChanged);
   gps.setAutoHPPOSLLHcallback(OnHPPOSLLHChanged);
   gps.setAutoDOPcallback(OnDOPChanged);
@@ -179,7 +179,9 @@ void setup()
   Serial.println("App start");
   lastButtonPressTime = millis();
   Wire.begin();   
-  
+#if defined(AM_PART_APOLLO3)
+  Wire.setPullups(0); // On the Artemis, we can disable the internal I2C pull-ups too to help reduce bus errors
+#endif
   //Serial1.setTimeout(10);
   initButtons();
   pinMode(LED_BUILTIN, OUTPUT);
