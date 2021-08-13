@@ -23,15 +23,12 @@ String mGpstime = "---";
 int mSatsBySystem [5] = { 0, 0, 0, 0, 0 }; 
 
 char buf[1024];
-bool readData(SFE_UBLOX_GPS *gps)
+void onPVTDataChanged_(UBX_NAV_PVT_data_t* pvt)
 {
-  bool result = false;
-  if (gps->getPVT())
-  {    
-    mSpeed = gps->getGroundSpeed() * 0.00194384449;
-    mCourse = gps->getHeading()/ 100000.0;
-    mElevation = gps->getAltitude() / 1000.0;
-    mLatitude = gps->getLatitude() / 10000000.0;
+    mSpeed = pvt->gSpeed * 0.00194384449;
+    mCourse = pvt->headVeh/ 100000.0;
+    mElevation = pvt->hMSL / 1000.0;
+    mLatitude = pvt->lat / 10000000.0;
     if(mLatitude <0)
     {
       mLatIndicator = 'S';
@@ -39,7 +36,7 @@ bool readData(SFE_UBLOX_GPS *gps)
     }
     else 
       mLatIndicator = 'N';
-    mLongitude = gps->getLongitude() / 10000000.0;
+    mLongitude = pvt->lon / 10000000.0;
     if(mLongitude <0)
     {
       mLonIndicator = 'W';
@@ -47,11 +44,13 @@ bool readData(SFE_UBLOX_GPS *gps)
     }
     else 
       mLonIndicator = 'E';
-    mGpstime = String(gps->getHour()) + (gps->getMinute() < 10 ? ":0" : ":") + String(gps->getMinute())+ (gps->getSecond() < 10 ? ":0" : ":") + String(gps->getSecond());
-    auto sol = gps->getCarrierSolutionType();
-    mFixType = gps->getFixType();
-    bool isValid = gps->getGnssFixOk();
-    bool diffSoln = gps->getDiffSoln();
+
+   mGpstime = String(pvt->hour) + (pvt->min < 10 ? ":0" : ":") + String(pvt->min)+ (pvt->sec < 10 ? ":0" : ":") + String(pvt->sec);
+   mFixType = pvt->fixType;
+   auto flags = pvt->flags.bits.gnssFixOK;
+   bool isValid = pvt->flags.bits.gnssFixOK == 1;
+   uint8_t sol = pvt->flags.bits.carrSoln == 1;
+   uint8_t diffSoln = pvt->flags.bits.diffSoln;
     if(sol == 1) {
       mMode = "RTK Float";
       mQuality = 5;
@@ -98,25 +97,19 @@ bool readData(SFE_UBLOX_GPS *gps)
       else
          mMode = String(mFixType) + ":" + String(sol); // "???";
     }
-    mSats = gps->getSIV();
-    result = true;
-
-  }
-  if (gps->getHPPOSLLH())
-  {
-    mVerticalError = gps->getVerticalAccuracy() / 10000.0;
-    mHorizontalError = gps->getHorizontalAccuracy() / 10000.0;
-    result = true;
-  }
-  if (gps->getDOP())
-  {
-    mPdop = gps->getPositionDOP() / 100.0;
-    mHdop = gps->getHorizontalDOP() / 100.0;
-    mVdop = gps->getVerticalDOP() / 100.0;
-    result = true;
-  }
-  return result;
-};
+    mSats = pvt->numSV;
+}
+void OnHPPOSLLHChanged_(UBX_NAV_HPPOSLLH_data_t* hppos)
+{
+  mVerticalError = hppos->vAcc / 10000.0;
+  mHorizontalError = hppos->hAcc / 10000.0;
+}
+void OnDOPChanged_(UBX_NAV_DOP_data_t* dop)
+{   
+  mPdop = dop->pDOP / 100.0;
+  mHdop = dop->hDOP / 100.0;
+  mVdop = dop->vDOP / 100.0;  
+}
   bool hasFix() { return mFixType > 0; };
   int8_t fixType() { return mFixType; };
   float speed() { return hasFix() ? mSpeed : NAN; };

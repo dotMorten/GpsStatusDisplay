@@ -64,7 +64,6 @@ class Menu
     void up();
     void down();
     bool left();
-    void right();
     int select();
     void drawHeader();
     //state

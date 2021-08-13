@@ -32,19 +32,19 @@ const int BLUETOOTHSETTINGSMENUID = CONNECTIONSMENUID+200;
     new MenuItem(CONNECTIONSMENUID + 2, "Bluetooth", "---"),
   };
   MenuItem *enabledNmeaMessagesItems[] = {    
-    new MenuItem(NMEAMSGMENUID, "GGA", "--", CFG_MSGOUT_NMEA_ID_GGA_USB),
-    new MenuItem(NMEAMSGMENUID, "GLL", "--", CFG_MSGOUT_NMEA_ID_GLL_USB),
-    new MenuItem(NMEAMSGMENUID, "GSA", "--", CFG_MSGOUT_NMEA_ID_GSA_USB),
-    new MenuItem(NMEAMSGMENUID, "GSV", "--", CFG_MSGOUT_NMEA_ID_GSV_USB),
-    new MenuItem(NMEAMSGMENUID, "RMC", "--", CFG_MSGOUT_NMEA_ID_RMC_USB),
-    new MenuItem(NMEAMSGMENUID, "VTG", "--", CFG_MSGOUT_NMEA_ID_VTG_USB),
-    new MenuItem(NMEAMSGMENUID, "GRS", "--", CFG_MSGOUT_NMEA_ID_GRS_USB),
-    new MenuItem(NMEAMSGMENUID, "GST", "--", CFG_MSGOUT_NMEA_ID_GST_USB),
-    new MenuItem(NMEAMSGMENUID, "ZDA", "--", CFG_MSGOUT_NMEA_ID_ZDA_USB),
-    new MenuItem(NMEAMSGMENUID, "GBS", "--", CFG_MSGOUT_NMEA_ID_GBS_USB),
-    new MenuItem(NMEAMSGMENUID, "DTM", "--", CFG_MSGOUT_NMEA_ID_DTM_USB),
-    new MenuItem(NMEAMSGMENUID, "GNS", "--", CFG_MSGOUT_NMEA_ID_GNS_USB),
-    new MenuItem(NMEAMSGMENUID, "VLW", "--", CFG_MSGOUT_NMEA_ID_VLW_USB),
+    new MenuItem(NMEAMSGMENUID, "GGA", "--", UBLOX_CFG_MSGOUT_NMEA_ID_GGA_USB),
+    new MenuItem(NMEAMSGMENUID, "GLL", "--", UBLOX_CFG_MSGOUT_NMEA_ID_GLL_USB),
+    new MenuItem(NMEAMSGMENUID, "GSA", "--", UBLOX_CFG_MSGOUT_NMEA_ID_GSA_USB),
+    new MenuItem(NMEAMSGMENUID, "GSV", "--", UBLOX_CFG_MSGOUT_NMEA_ID_GSV_USB),
+    new MenuItem(NMEAMSGMENUID, "RMC", "--", UBLOX_CFG_MSGOUT_NMEA_ID_RMC_USB),
+    new MenuItem(NMEAMSGMENUID, "VTG", "--", UBLOX_CFG_MSGOUT_NMEA_ID_VTG_USB),
+    new MenuItem(NMEAMSGMENUID, "GRS", "--", UBLOX_CFG_MSGOUT_NMEA_ID_GRS_USB),
+    new MenuItem(NMEAMSGMENUID, "GST", "--", UBLOX_CFG_MSGOUT_NMEA_ID_GST_USB),
+    new MenuItem(NMEAMSGMENUID, "ZDA", "--", UBLOX_CFG_MSGOUT_NMEA_ID_ZDA_USB),
+    new MenuItem(NMEAMSGMENUID, "GBS", "--", UBLOX_CFG_MSGOUT_NMEA_ID_GBS_USB),
+    new MenuItem(NMEAMSGMENUID, "DTM", "--", UBLOX_CFG_MSGOUT_NMEA_ID_DTM_USB),
+    new MenuItem(NMEAMSGMENUID, "GNS", "--", UBLOX_CFG_MSGOUT_NMEA_ID_GNS_USB),
+    new MenuItem(NMEAMSGMENUID, "VLW", "--", UBLOX_CFG_MSGOUT_NMEA_ID_VLW_USB),
   };
     MenuItem *nmeaSettingsMenuItems[] =
   {
@@ -211,7 +211,7 @@ int processMenu(Menu *currentMenu, SFE_UBLOX_GPS *gps)
       else if(rtcmOn)
         connectionsMenuItems[0]->setValue("RTCM");
       else if(!nmeaOn && !rtcmOn)
-        connectionsMenuItems[1]->setValue("Off");
+        connectionsMenuItems[0]->setValue("Off");
       currentMenu->refresh();
     }
     else if(result == CONNECTIONSMENUID + 2) // Bluetooth Output
