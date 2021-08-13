@@ -43,7 +43,7 @@
 #ifndef __u_blox_structs_h__
 #define __u_blox_structs_h__
 
-#include "SparkFun_Ublox_Arduino_Library.h"
+#include "SparkFun_u-blox_GNSS_Arduino_Library.h"
 
 #ifndef DEF_NUM_SENS
 #define DEF_NUM_SENS 7 // The maximum number of ESF sensors
@@ -63,7 +63,6 @@ struct ubxAutomaticFlags
       uint8_t callbackCopyValid : 1; // Is the copy of the data struct used by the callback valid/fresh?
     } bits;
   } flags;
-  void (*callbackPointer)(); // This will contain the pointer to the callback function
 };
 
 // UBX-NAV-POSECEF (0x01 0x01): Position solution in ECEF
@@ -101,6 +100,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_NAV_POSECEF_data_t data;
   UBX_NAV_POSECEF_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_NAV_POSECEF_data_t);
+  UBX_NAV_POSECEF_data_t  *callbackData;
 } UBX_NAV_POSECEF_t;
 
 // UBX-NAV-POSLLH (0x01 0x02): Geodetic position solution
@@ -142,6 +143,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_NAV_POSLLH_data_t data;
   UBX_NAV_POSLLH_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_NAV_POSLLH_data_t);
+  UBX_NAV_POSLLH_data_t  *callbackData;
 } UBX_NAV_POSLLH_t;
 
 // UBX-NAV-STATUS (0x01 0x03): Receiver navigation status
@@ -240,6 +243,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_NAV_STATUS_data_t data;
   UBX_NAV_STATUS_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_NAV_STATUS_data_t);
+  UBX_NAV_STATUS_data_t  *callbackData;
 } UBX_NAV_STATUS_t;
 
 // UBX-NAV-DOP (0x01 0x04): Dilution of precision
@@ -283,6 +288,8 @@ typedef struct
   ubxAutomaticFlags automaticFlags;
   UBX_NAV_DOP_data_t data;
   UBX_NAV_DOP_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_NAV_DOP_data_t);
+  UBX_NAV_DOP_data_t  *callbackData;
 } UBX_NAV_DOP_t;
 
 // UBX-NAV-ATT (0x01 0x05): Attitude solution
@@ -327,6 +334,8 @@ typedef struct
   ubxAutomaticFlags automaticFlags;
   UBX_NAV_ATT_data_t data;
   UBX_NAV_ATT_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_NAV_ATT_data_t);
+  UBX_NAV_ATT_data_t  *callbackData;
 } UBX_NAV_ATT_t;
 
 // UBX-NAV-PVT (0x01 0x07): Navigation position velocity time solution
@@ -488,6 +497,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_NAV_PVT_data_t data;
   UBX_NAV_PVT_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_NAV_PVT_data_t);
+  UBX_NAV_PVT_data_t  *callbackData;
 } UBX_NAV_PVT_t;
 
 // UBX-NAV-ODO (0x01 0x09): Odometer solution
@@ -526,6 +537,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_NAV_ODO_data_t data;
   UBX_NAV_ODO_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_NAV_ODO_data_t);
+  UBX_NAV_ODO_data_t  *callbackData;
 } UBX_NAV_ODO_t;
 
 // UBX-NAV-VELECEF (0x01 0x11): Velocity solution in ECEF
@@ -563,6 +576,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_NAV_VELECEF_data_t data;
   UBX_NAV_VELECEF_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_NAV_VELECEF_data_t);
+  UBX_NAV_VELECEF_data_t  *callbackData;
 } UBX_NAV_VELECEF_t;
 
 // UBX-NAV-VELNED (0x01 0x12): Velocity solution in NED frame
@@ -608,6 +623,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_NAV_VELNED_data_t data;
   UBX_NAV_VELNED_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_NAV_VELNED_data_t);
+  UBX_NAV_VELNED_data_t  *callbackData;
 } UBX_NAV_VELNED_t;
 
 // UBX-NAV-HPPOSECEF (0x01 0x13): High precision position solution in ECEF
@@ -665,6 +682,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_NAV_HPPOSECEF_data_t data;
   UBX_NAV_HPPOSECEF_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_NAV_HPPOSECEF_data_t);
+  UBX_NAV_HPPOSECEF_data_t  *callbackData;
 } UBX_NAV_HPPOSECEF_t;
 
 // UBX-NAV-HPPOSLLH (0x01 0x14): High precision geodetic position solution
@@ -728,6 +747,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_NAV_HPPOSLLH_data_t data;
   UBX_NAV_HPPOSLLH_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_NAV_HPPOSLLH_data_t);
+  UBX_NAV_HPPOSLLH_data_t  *callbackData;
 } UBX_NAV_HPPOSLLH_t;
 
 // UBX-NAV-TIMEUTC (0x01 0x21): UTC time solution
@@ -790,6 +811,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_NAV_TIMEUTC_data_t data;
   UBX_NAV_TIMEUTC_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_NAV_TIMEUTC_data_t);
+  UBX_NAV_TIMEUTC_data_t  *callbackData;
 } UBX_NAV_TIMEUTC_t;
 
 // UBX-NAV-CLOCK (0x01 0x22): Clock solution
@@ -827,7 +850,69 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_NAV_CLOCK_data_t data;
   UBX_NAV_CLOCK_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_NAV_CLOCK_data_t);
+  UBX_NAV_CLOCK_data_t  *callbackData;
 } UBX_NAV_CLOCK_t;
+
+// UBX-NAV-TIMELS (0x01 0x26): Leap second event information
+const uint16_t UBX_NAV_TIMELS_LEN = 24;
+
+typedef struct
+{
+  uint32_t iTOW; // GPS time of week of the navigation epoch: ms
+  uint8_t version; // Message version (0x00 for this version)
+  uint8_t reserved1[3];
+  uint8_t srcOfCurrLs; //Information source for the current number of leap seconds
+  int8_t currLs; //Current number of leap seconds since start of GPS (Jan 6, 1980), s
+  uint8_t srcOfLsChange; //Information source for the future leap second event
+  int8_t lsChange; //Future leap second change if one is scheduled, +1, 0, -1s
+  int32_t timeToLsEvent; //Num of secs until the next or from the last leap second, s
+  uint16_t dateOfLsGpsWn; //GPS week num (WN) of the next or the last leap second event
+  uint16_t dateOfLsGpsDn; //GPS day of week num (DN) for the next or last leap second event
+  uint8_t reserved2[3];
+  union
+  {
+    uint8_t all;
+    struct
+    {
+      uint8_t validCurrLs : 1; // 1 = Valid current number of leap seconds value
+      uint8_t validTimeToLsEvent : 1; // 1 = Valid time to next leap second event or from the last leap second event if no future event scheduled
+    } bits;
+  } valid;
+} UBX_NAV_TIMELS_data_t;
+
+typedef struct
+{
+  union
+  {
+    uint32_t all;
+    struct
+    {
+      uint32_t all : 1;
+
+      uint32_t iTOW : 1;
+      uint32_t version : 1;
+      uint32_t srcOfCurrLs : 1;
+      uint32_t currLs : 1;
+      uint32_t srcOfLsChange : 1;
+      uint32_t lsChange : 1;
+      uint32_t timeToLsEvent : 1;
+      uint32_t dateOfLsGpsWn : 1;
+      uint32_t dateOfLsGpsDn : 1;
+      uint32_t validCurrLs : 1;
+      uint32_t validTimeToLsEvent : 1;
+    } bits;
+  } moduleQueried;
+} UBX_NAV_TIMELS_moduleQueried_t;
+
+typedef struct
+{
+	ubxAutomaticFlags automaticFlags;
+  UBX_NAV_TIMELS_data_t data;
+  UBX_NAV_TIMELS_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_NAV_TIMELS_data_t);
+  UBX_NAV_TIMELS_data_t  *callbackData;
+} UBX_NAV_TIMELS_t;
 
 // UBX-NAV-SVIN (0x01 0x3B): Survey-in data
 const uint16_t UBX_NAV_SVIN_LEN = 40;
@@ -883,6 +968,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_NAV_SVIN_data_t data;
   UBX_NAV_SVIN_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_NAV_SVIN_data_t);
+  UBX_NAV_SVIN_data_t  *callbackData;
 } UBX_NAV_SVIN_t;
 
 // UBX-NAV-RELPOSNED (0x01 0x3C): Relative positioning information in NED frame
@@ -980,6 +1067,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_NAV_RELPOSNED_data_t data;
   UBX_NAV_RELPOSNED_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_NAV_RELPOSNED_data_t);
+  UBX_NAV_RELPOSNED_data_t  *callbackData;
 } UBX_NAV_RELPOSNED_t;
 
 // RXM-specific structs
@@ -1009,6 +1098,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_RXM_SFRBX_data_t data;
   boolean moduleQueried;
+  void (*callbackPointer)(UBX_RXM_SFRBX_data_t);
+  UBX_RXM_SFRBX_data_t  *callbackData;
 } UBX_RXM_SFRBX_t;
 
 // UBX-RXM-RAWX (0x02 0x15): Multi-GNSS raw measurement data
@@ -1021,7 +1112,7 @@ typedef struct
   uint8_t rcvTow[8]; // Measurement time of week in receiver local time [64-bit float]
   uint16_t week; // GPS week number
   int8_t leapS; // GPS leap seconds
-  uint8_t numMeas; // Numnber of measurements to follow
+  uint8_t numMeas; // Number of measurements to follow
   union
   {
     uint8_t all;
@@ -1074,6 +1165,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_RXM_RAWX_data_t data;
   boolean moduleQueried;
+  void (*callbackPointer)(UBX_RXM_RAWX_data_t);
+  UBX_RXM_RAWX_data_t  *callbackData;
 } UBX_RXM_RAWX_t;
 
 // CFG-specific structs
@@ -1109,6 +1202,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_CFG_RATE_data_t data;
   UBX_CFG_RATE_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_CFG_RATE_data_t);
+  UBX_CFG_RATE_data_t  *callbackData;
 } UBX_CFG_RATE_t;
 
 // TIM-specific structs
@@ -1178,6 +1273,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_TIM_TM2_data_t data;
   UBX_TIM_TM2_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_TIM_TM2_data_t);
+  UBX_TIM_TM2_data_t  *callbackData;
 } UBX_TIM_TM2_t;
 
 // ESF-specific structs
@@ -1250,6 +1347,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_ESF_ALG_data_t data;
   UBX_ESF_ALG_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_ESF_ALG_data_t);
+  UBX_ESF_ALG_data_t  *callbackData;
 } UBX_ESF_ALG_t;
 
 // UBX-ESF-INS (0x10 0x15): Vehicle dynamics information
@@ -1314,6 +1413,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_ESF_INS_data_t data;
   UBX_ESF_INS_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_ESF_INS_data_t);
+  UBX_ESF_INS_data_t  *callbackData;
 } UBX_ESF_INS_t;
 
 // UBX-ESF-MEAS (0x10 0x02): External sensor fusion measurements
@@ -1382,6 +1483,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_ESF_MEAS_data_t data;
   UBX_ESF_MEAS_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_ESF_MEAS_data_t);
+  UBX_ESF_MEAS_data_t  *callbackData;
 } UBX_ESF_MEAS_t;
 
 // UBX-ESF-RAW (0x10 0x03): Raw sensor measurements
@@ -1427,6 +1530,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_ESF_RAW_data_t data;
   UBX_ESF_RAW_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_ESF_RAW_data_t);
+  UBX_ESF_RAW_data_t  *callbackData;
 } UBX_ESF_RAW_t;
 
 // UBX-ESF-STATUS (0x10 0x10): External sensor fusion status
@@ -1512,6 +1617,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_ESF_STATUS_data_t data;
   UBX_ESF_STATUS_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_ESF_STATUS_data_t);
+  UBX_ESF_STATUS_data_t  *callbackData;
 } UBX_ESF_STATUS_t;
 
 // HNR-specific structs
@@ -1626,6 +1733,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_HNR_PVT_data_t data;
   UBX_HNR_PVT_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_HNR_PVT_data_t);
+  UBX_HNR_PVT_data_t  *callbackData;
 } UBX_HNR_PVT_t;
 
 // UBX-HNR-ATT (0x28 0x01): Attitude solution
@@ -1670,6 +1779,8 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_HNR_ATT_data_t data;
   UBX_HNR_ATT_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_HNR_ATT_data_t);
+  UBX_HNR_ATT_data_t  *callbackData;
 } UBX_HNR_ATT_t;
 
 // UBX-HNR-INS (0x28 0x02): Vehicle dynamics information
@@ -1734,6 +1845,43 @@ typedef struct
 	ubxAutomaticFlags automaticFlags;
   UBX_HNR_INS_data_t data;
   UBX_HNR_INS_moduleQueried_t moduleQueried;
+  void (*callbackPointer)(UBX_HNR_INS_data_t);
+  UBX_HNR_INS_data_t  *callbackData;
 } UBX_HNR_INS_t;
+
+// UBX-CFG-TP5 (0x06 0x31): Time pulse parameters
+const uint16_t UBX_CFG_TP5_LEN = 32;
+
+typedef struct
+{
+  uint8_t tpIdx; // Time pulse selection (0 = TIMEPULSE, 1 = TIMEPULSE2)
+  uint8_t version; // Message version (0x01 for this version)
+  uint8_t reserved1[2];
+  int16_t antCableDelay; // Antenna cable delay: ns
+  int16_t rfGroupDelay; // RF group delay: ns
+  uint32_t freqPeriod; // Frequency or period time, depending on setting of bit 'isFreq': Hz_or_us
+  uint32_t freqPeriodLock; // Frequency or period time when locked to GNSS time, only used if 'lockedOtherSet' is set: Hz_or_us
+  uint32_t pulseLenRatio; // Pulse length or duty cycle, depending on 'isLength': us_or_2^-32
+  uint32_t pulseLenRatioLock; // Pulse length or duty cycle when locked to GNSS time, only used if 'lockedOtherSet' is set: us_or_2^-32
+  int32_t userConfigDelay; // User-configurable time pulse delay: ns
+  union
+  {
+    uint32_t all;
+    struct
+    {
+      uint32_t active : 1; // If set enable time pulse; if pin assigned to another function, other function takes precedence.
+      uint32_t lockGnssFreq : 1; // If set, synchronize time pulse to GNSS as soon as GNSS time is valid. If not set, or before GNSS time is valid, use local clock.
+      uint32_t lockedOtherSet : 1; // If set the receiver switches between the timepulse settings given by 'freqPeriodLocked' & 'pulseLenLocked' and those given by 'freqPeriod' & 'pulseLen'.
+      uint32_t isFreq : 1; // If set 'freqPeriodLock' and 'freqPeriod' are interpreted as frequency, otherwise interpreted as period.
+      uint32_t isLength : 1; // If set 'pulseLenRatioLock' and 'pulseLenRatio' interpreted as pulse length, otherwise interpreted as duty cycle.
+      uint32_t alignToTow : 1; // Align pulse to top of second (period time must be integer fraction of 1s). Also set 'lockGnssFreq' to use this feature.
+      uint32_t polarity : 1; // Pulse polarity: 0: falling edge at top of second; 1: rising edge at top of second
+      uint32_t gridUtcGnss : 4; // Timegrid to use: 0: UTC; 1: GPS; 2: GLONASS; 3: BeiDou; 4: Galileo
+      uint32_t syncMode : 3; // Sync Manager lock mode to use:
+                             // 0: switch to 'freqPeriodLock' and 'pulseLenRatioLock' as soon as Sync Manager has an accurate time, never switch back to 'freqPeriod' and 'pulseLenRatio'
+                             // 1: switch to 'freqPeriodLock' and 'pulseLenRatioLock' as soon as Sync Manager has an accurate time, and switch back to 'freqPeriod' and 'pulseLenRatio' as soon as time gets inaccurate
+    } bits;
+  } flags;
+} UBX_CFG_TP5_data_t;
 
 #endif

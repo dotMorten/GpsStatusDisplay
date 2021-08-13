@@ -29,7 +29,7 @@ struct minfoStructure // Structure to hold the module info (uses 341 bytes of RA
         char extension[10][30];
     } minfo;
     
-bool sendCommand(SFE_UBLOX_GPS *gps, uint8_t cls, uint8_t id, uint8_t len, uint8_t *payload)
+bool sendCommand(SFE_UBLOX_GNSS *gps, uint8_t cls, uint8_t id, uint8_t len, uint8_t *payload)
 {
   // Get USB Port settings:
   customCfg.cls = cls;  // This is the message Class
@@ -50,7 +50,7 @@ uint8_t getval8(int offset)
   return customPayload[offset];
 }
 */
-boolean getModuleInfo(SFE_UBLOX_GPS *gps, uint16_t maxWait)
+boolean getModuleInfo(SFE_UBLOX_GNSS *gps, uint16_t maxWait)
 {
     minfo.hwVersion[0] = 0;
     minfo.swVersion[0] = 0;

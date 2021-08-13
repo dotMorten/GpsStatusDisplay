@@ -81,7 +81,7 @@ MenuItem *gpsInfoMenu[] =
       new MenuItem(0, ""),
       new MenuItem(0, ""),
     };
-int initSettingsMenu(SFE_UBLOX_GPS *gps)
+int initSettingsMenu(SFE_UBLOX_GNSS *gps)
 {
   auto sbas = gps->getVal8(CFG_SBAS_USE_DIFFCORR);
   mainMenuItems[3]->setValue(sbas == 0 ? "Disabled" : "Enabled");
@@ -153,7 +153,7 @@ int initSettingsMenu(SFE_UBLOX_GPS *gps)
   aboutMenuItems[1]->setChildren(gpsInfoMenu, menuCount);
   */
 };
-int resetGps(SFE_UBLOX_GPS *gps)
+int resetGps(SFE_UBLOX_GNSS *gps)
 {
   gps->factoryReset();
   gps->setAutoPVT(true, true); //Tell the GPS to "send" each solution
@@ -164,7 +164,7 @@ int resetGps(SFE_UBLOX_GPS *gps)
   gps->saveConfiguration(); //Save the current settings to flash and BBR
   initSettingsMenu(gps);
 }
-int processMenu(Menu *currentMenu, SFE_UBLOX_GPS *gps)
+int processMenu(Menu *currentMenu, SFE_UBLOX_GNSS *gps)
 {
   // Process menu if active
     auto result = currentMenu->processMenu();

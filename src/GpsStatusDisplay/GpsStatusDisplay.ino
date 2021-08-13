@@ -7,7 +7,7 @@
 
   3rd party libs used:
   ucglib : https://github.com/olikraus/ucglib  v1.5.2 http://librarymanager/All#Ucglib
-  SparkFun u-blox lib: https://github.com/sparkfun/SparkFun_Ublox_Arduino_Library   http://librarymanager/All#SparkFun_Ublox_GPS
+  SparkFun u-blox lib: https://github.com/sparkfun/SparkFun_u-blox_GNSS_Arduino_Library
 */
 
 #include <Wire.h>
@@ -16,8 +16,7 @@
 // Initialize the OLED display:
 Ucglib_SSD1351_18x128x128_FT_HWSPI ucg(/*cd=*/ 1, /*cs=*/ 0, /*reset=*/ 4);
 
-//#include <SparkFun_Ublox_Arduino_Library.h> //http://librarymanager/All#SparkFun_Ublox_GPS
-#include "SparkFun_Ublox_Arduino_Library.h"
+#include "SparkFun_u-blox_GNSS_Arduino_Library.h"
 #include "GnssMonitor.h"
 #include "drawhelpers.h"
 #include "Menu.h"
@@ -28,7 +27,7 @@ Ucglib_SSD1351_18x128x128_FT_HWSPI ucg(/*cd=*/ 1, /*cs=*/ 0, /*reset=*/ 4);
 
 bool ledstate;
 bool isDisplayOff;
-SFE_UBLOX_GPS gps;
+SFE_UBLOX_GNSS gps;
 Menu *currentMenu = nullptr;
 bool isInitializing = true;
 bool gpsConnectionError = false;
@@ -132,7 +131,7 @@ unsigned long lastButtonPressTime;
 //MenuItem menu;
 
 bool hasNewData = false;
-void onPVTDataChanged()
+void onPVTDataChanged(UBX_NAV_PVT_data_t pvt)
 {
   if(ledstate)
     digitalWrite(LED_BUILTIN, HIGH);
@@ -140,19 +139,16 @@ void onPVTDataChanged()
     digitalWrite(LED_BUILTIN, LOW);
   ledstate = !ledstate;
 
-  auto pvt = gps.packetUBXNAVPVTcopy;
   onPVTDataChanged_(pvt);
   hasNewData = true;
 }
-void OnHPPOSLLHChanged()
+void OnHPPOSLLHChanged(UBX_NAV_HPPOSLLH_data_t hppos)
 {
-  auto hppos = gps.packetUBXNAVHPPOSLLHcopy;
   OnHPPOSLLHChanged_(hppos);
   hasNewData = true;
 }
-void OnDOPChanged()
+void OnDOPChanged(UBX_NAV_DOP_data_t dop)
 {
-  auto dop = gps.packetUBXNAVDOPcopy;
   OnDOPChanged_(dop);
   hasNewData = true;
 }

@@ -23,12 +23,12 @@ String mGpstime = "---";
 int mSatsBySystem [5] = { 0, 0, 0, 0, 0 }; 
 
 char buf[1024];
-void onPVTDataChanged_(UBX_NAV_PVT_data_t* pvt)
+void onPVTDataChanged_(UBX_NAV_PVT_data_t pvt)
 {
-    mSpeed = pvt->gSpeed * 0.00194384449;
-    mCourse = pvt->headVeh/ 100000.0;
-    mElevation = pvt->hMSL / 1000.0;
-    mLatitude = pvt->lat / 10000000.0;
+    mSpeed = pvt.gSpeed * 0.00194384449;
+    mCourse = pvt.headVeh/ 100000.0;
+    mElevation = pvt.hMSL / 1000.0;
+    mLatitude = pvt.lat / 10000000.0;
     if(mLatitude <0)
     {
       mLatIndicator = 'S';
@@ -36,7 +36,7 @@ void onPVTDataChanged_(UBX_NAV_PVT_data_t* pvt)
     }
     else 
       mLatIndicator = 'N';
-    mLongitude = pvt->lon / 10000000.0;
+    mLongitude = pvt.lon / 10000000.0;
     if(mLongitude <0)
     {
       mLonIndicator = 'W';
@@ -45,12 +45,12 @@ void onPVTDataChanged_(UBX_NAV_PVT_data_t* pvt)
     else 
       mLonIndicator = 'E';
 
-   mGpstime = String(pvt->hour) + (pvt->min < 10 ? ":0" : ":") + String(pvt->min)+ (pvt->sec < 10 ? ":0" : ":") + String(pvt->sec);
-   mFixType = pvt->fixType;
-   auto flags = pvt->flags.bits.gnssFixOK;
-   bool isValid = pvt->flags.bits.gnssFixOK == 1;
-   uint8_t sol = pvt->flags.bits.carrSoln == 1;
-   uint8_t diffSoln = pvt->flags.bits.diffSoln;
+   mGpstime = String(pvt.hour) + (pvt.min < 10 ? ":0" : ":") + String(pvt.min)+ (pvt.sec < 10 ? ":0" : ":") + String(pvt.sec);
+   mFixType = pvt.fixType;
+   auto flags = pvt.flags.bits.gnssFixOK;
+   bool isValid = pvt.flags.bits.gnssFixOK == 1;
+   uint8_t sol = pvt.flags.bits.carrSoln == 1;
+   uint8_t diffSoln = pvt.flags.bits.diffSoln;
     if(sol == 1) {
       mMode = "RTK Float";
       mQuality = 5;
@@ -97,18 +97,18 @@ void onPVTDataChanged_(UBX_NAV_PVT_data_t* pvt)
       else
          mMode = String(mFixType) + ":" + String(sol); // "???";
     }
-    mSats = pvt->numSV;
+    mSats = pvt.numSV;
 }
-void OnHPPOSLLHChanged_(UBX_NAV_HPPOSLLH_data_t* hppos)
+void OnHPPOSLLHChanged_(UBX_NAV_HPPOSLLH_data_t hppos)
 {
-  mVerticalError = hppos->vAcc / 10000.0;
-  mHorizontalError = hppos->hAcc / 10000.0;
+  mVerticalError = hppos.vAcc / 10000.0;
+  mHorizontalError = hppos.hAcc / 10000.0;
 }
-void OnDOPChanged_(UBX_NAV_DOP_data_t* dop)
+void OnDOPChanged_(UBX_NAV_DOP_data_t dop)
 {   
-  mPdop = dop->pDOP / 100.0;
-  mHdop = dop->hDOP / 100.0;
-  mVdop = dop->vDOP / 100.0;  
+  mPdop = dop.pDOP / 100.0;
+  mHdop = dop.hDOP / 100.0;
+  mVdop = dop.vDOP / 100.0;  
 }
   bool hasFix() { return mFixType > 0; };
   int8_t fixType() { return mFixType; };
