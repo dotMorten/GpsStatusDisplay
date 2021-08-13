@@ -17,7 +17,7 @@ The below list will run you around $300 (mainly for the advanced GPS chip), but 
  5. Bluetooth chip: [SparkFun Bluetooth Silvermate](https://amzn.to/35LofKn)
  6. Arduino: [SparkFun Thing Plus - SAMD51](https://amzn.to/3kK7pSq)
  7. Display: [Waveshare 1.5inch RGB OLED Display Module](https://amzn.to/3oGIIsc)
- 8. Buttons: [NOYITO 5-Channel Tactile Switch Breakout](https://amzn.to/31V8IGq)
+ 8. Buttons: 4 6x6mm tactile buttons
  9. Qwiic connector: [SparkFun Qwiic Cable Kit Hook Up](https://amzn.to/2TBvj6r)
  10. Various cables/connectors for soldering it all together
  
