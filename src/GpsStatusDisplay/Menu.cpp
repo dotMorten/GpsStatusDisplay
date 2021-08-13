@@ -13,7 +13,7 @@ void Menu::initScreen()
   drawHeader();
   currentButton = KEY_NONE;
   show(); 
-  if (getButtonState() == KEY_SELECT) // Ensure select isn't triggered when launching if already pressed
+  if (getButtonState() == KEY_LEFT) // Ensure select isn't triggered when launching if already pressed
     currentButton = KEY_INITIALIZING;
 }
 void Menu::drawHeader()
@@ -79,7 +79,7 @@ void Menu::show()
     if(i == selectedIndex)
     {
        // Invert
-      if(currentButton == KEY_SELECT)
+      if(currentButton == KEY_RIGHT)
       {
         // invert to selection color while button is pressed
         ucg->setColor(255,255,0);
@@ -151,12 +151,6 @@ bool Menu::left()
   return false;
 }
 
-
-void Menu::right()
-{ 
-  select();
-}
-
 int Menu::select()
 { 
   auto item = selectedMenuItem();
@@ -174,7 +168,7 @@ int Menu::processMenu()
 {
   int result = -1;
   int button = getButtonState();
-  if(button == KEY_SELECT && currentButton == KEY_INITIALIZING)
+  if(button == KEY_LEFT && currentButton == KEY_INITIALIZING)
     button = KEY_INITIALIZING;
 
   auto oldButton = currentButton;
@@ -192,18 +186,16 @@ int Menu::processMenu()
       if(!left())
         result = MENU_RESULT_EXIT;
     }
+    else if(oldButton == KEY_RIGHT && button == KEY_NONE)
+    {
+       //Select item on release
+       result = select();
+    }
     else if(button == KEY_RIGHT)
-      right();
-    else if(button == KEY_SELECT)
     {
        // Do nothing, but show() will draw item with selection color
        // We'll act on select on release below
        show();
-    }
-    else if(oldButton == KEY_SELECT && button == KEY_NONE)
-    {
-       //Select item on release
-       result = select();
     }
   }
   return result;

@@ -242,7 +242,7 @@ void loop()
     ucg.powerUp();
     requireFullRedraw = true;
   }
-  else if(currentMenu == nullptr && newButtonState == KEY_SELECT && buttonState == KEY_SELECT && t - lastButtonPressTime > 1000)
+  else if(currentMenu == nullptr && newButtonState == KEY_LEFT && buttonState == KEY_LEFT && t - lastButtonPressTime > 1000)
   {  
     //Enter menu on hold
     currentMenu = menu;
@@ -259,7 +259,7 @@ void loop()
       requireFullRedraw = true;
     }
   }
-  else if (newButtonState != buttonState && (newButtonState != KEY_NONE && newButtonState != KEY_SELECT))
+  else if (newButtonState != buttonState && newButtonState != KEY_NONE)
   {
     // flip status pages
     if(newButtonState == KEY_RIGHT || newButtonState == KEY_DOWN)

@@ -7,7 +7,6 @@ void initButtons()
   pinMode(PIN_BUTTON_DOWN, INPUT_PULLUP);
   pinMode(PIN_BUTTON_LEFT, INPUT_PULLUP);
   pinMode(PIN_BUTTON_RIGHT, INPUT_PULLUP);
-  pinMode(PIN_BUTTON_SELECT, INPUT_PULLUP);
 };
 
 int getButtonState()
@@ -20,8 +19,6 @@ int getButtonState()
     return KEY_UP;
   else if ( digitalRead(PIN_BUTTON_DOWN) == LOW )
     return KEY_DOWN;
-  else if ( digitalRead(PIN_BUTTON_SELECT) == LOW)
-    return KEY_SELECT;
   else
     return KEY_NONE;
 };
