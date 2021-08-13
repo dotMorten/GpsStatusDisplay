@@ -211,7 +211,7 @@ int processMenu(Menu *currentMenu, SFE_UBLOX_GPS *gps)
       else if(rtcmOn)
         connectionsMenuItems[0]->setValue("RTCM");
       else if(!nmeaOn && !rtcmOn)
-        connectionsMenuItems[1]->setValue("Off");
+        connectionsMenuItems[0]->setValue("Off");
       currentMenu->refresh();
     }
     else if(result == CONNECTIONSMENUID + 2) // Bluetooth Output
