@@ -339,6 +339,7 @@ int processMenu(Menu *currentMenu, SFE_UBLOX_GNSS *gps)
         newBt = true;
       }
       else if(enabledUsb) {
+        newUsb = true;
         newBt = true;
       }      
       else if(enabledBt) {
