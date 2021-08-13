@@ -89,7 +89,16 @@ int initSettingsMenu(SFE_UBLOX_GNSS *gps)
   gnssMenuItems[0]->setValue((String(frequency) + " ms").c_str());
   for(uint8_t i = 0; i<13; i++) {
     auto child = enabledNmeaMessagesItems[i];
-    child->setValue(gps->getVal8(child->getTag()) > 0 ? "Enabled" : "Disabled");
+    auto enabledUsb = gps->getVal8(child->getTag()) > 0;
+    auto enabledBt = gps->getVal8(child->getTag() - 1) > 0;
+    auto state = "Disabled";
+    if(enabledUsb && enabledBt)
+       state = "USB+BT";
+    else if(enabledUsb)
+       state = "USB";
+    else if(enabledBt)
+       state = "BT";
+    child->setValue(state);
   }
   //Get NMEA version
   uint8_t nmeaVersion = gps->getVal8(CFG_NMEA_PROTVER);
@@ -319,14 +328,41 @@ int processMenu(Menu *currentMenu, SFE_UBLOX_GNSS *gps)
     else if(result == NMEAMSGMENUID) // NMEA message toggles
     {
       auto item = currentMenu->selectedMenuItem();
-      //auto title = item->getTitle();
       uint32_t messageid = item->getTag();
-      bool enabled =  (item->getValue() == "Enabled");
-      bool isok = gps->setVal8(messageid, enabled ? 0 : 1, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR);
-      if(isok)
+      auto value = item->getValue();
+      bool enabledUsb = (value == "USB" || value == "USB+BT");
+      bool enabledBt = (value == "BT" || value == "USB+BT");
+      bool newUsb = enabledUsb;
+      bool newBt = enabledBt;
+      if(enabledUsb && enabledBt) {
+        newUsb = false;
+        newBt = true;
+      }
+      else if(enabledUsb) {
+        newBt = true;
+      }      
+      else if(enabledBt) {
+        newBt = false;
+      }
+      else {
+        newUsb = true;
+      }
+      bool isok = gps->setVal8(messageid, newUsb ? 0 : 1, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR);// USB
+      if(!isok)
+         newUsb = enabledUsb;
+      bool isok2 = gps->setVal8(messageid - 1, newBt ? 0 : 1, VAL_LAYER_FLASH + VAL_LAYER_RAM + VAL_LAYER_BBR);// UART2/Bluetooth is 1 less on id
+      if(!isok2)
+         newBt = enabledBt;
+      if(isok || isok2)
       {
-        if(enabled) item->setValue("Disabled");
-        else item->setValue("Enabled");
+        auto state = "Disabled";
+        if(newUsb && newBt)
+          state = "USB+BT";
+        else if(newUsb)
+          state = "USB";
+        else if(newBt)
+          state = "BT";
+        item->setValue(state);
         currentMenu->refresh();
       }
     }
