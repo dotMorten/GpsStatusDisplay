@@ -49,7 +49,7 @@ void onPVTDataChanged_(UBX_NAV_PVT_data_t pvt)
    mFixType = pvt.fixType;
    auto flags = pvt.flags.bits.gnssFixOK;
    bool isValid = pvt.flags.bits.gnssFixOK == 1;
-   uint8_t sol = pvt.flags.bits.carrSoln == 1;
+   uint8_t sol = pvt.flags.bits.carrSoln;
    uint8_t diffSoln = pvt.flags.bits.diffSoln;
     if(sol == 1) {
       mMode = "RTK Float";
