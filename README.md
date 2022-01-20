@@ -1,4 +1,5 @@
 # High Accuracy GPS Device Build
+![image](https://user-images.githubusercontent.com/1378165/150398567-d158c34c-c597-49aa-a6b2-b0667993e872.png)
 
 Build your own survey-grade super-accurate GPS Device at a fraction of the cost.
 The below list will run you around $300 (mainly for the advanced GPS chip), but will rival high-end GPS receivers that'll often cost you up towards $10000, not to mention you get a built-in interface for configuring the device, instead of relying on external desktop or mobile software.
